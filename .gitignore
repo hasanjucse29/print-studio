@@ -1,0 +1,34 @@
+# Python cache & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Temporary uploaded files and thumbnails (prevents personal documents from being committed)
+uploads/*
+!uploads/.gitkeep
+!uploads/thumbs/.gitkeep
+
+# Environments
+env/
+venv/
+.venv/
+ENV/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# Temporary outputs
+test_*.pdf
+*.log

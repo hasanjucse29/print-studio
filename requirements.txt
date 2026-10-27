@@ -1,0 +1,5 @@
+Flask>=3.0.0
+pypdfium2>=4.30.0
+Pillow>=10.0.0
+pywin32>=306
+pypdf>=4.0.0
