@@ -33,76 +33,110 @@
     padding: 0;
 }
 
-body {
-    font-family: 'Hind Siliguri', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+html, body {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: 'Segoe UI Variable Text', 'Segoe UI', -apple-system, system-ui, BlinkMacSystemFont, 'Hind Siliguri', 'Inter', sans-serif;
     background-color: var(--bg-page);
     color: var(--text-primary);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
-    min-height: 100vh;
+}
+
+input, textarea, select {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+img {
+    -webkit-user-drag: none;
+    user-select: none;
+}
+
+/* Custom Sleek Desktop Scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
 }
 
 /* ================= Header ================= */
 .app-header {
     background-color: var(--bg-surface);
     border-bottom: 1px solid var(--border);
-    padding: 14px 28px;
+    padding: 8px 20px;
+    height: 54px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    position: sticky;
-    top: 0;
-    z-index: 40;
     box-shadow: var(--shadow-sm);
+    flex-shrink: 0;
 }
 
 .header-left {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
 }
 
 .app-logo {
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
     background: linear-gradient(135deg, #2563eb, #1d4ed8);
     color: #ffffff;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 22px;
-    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);
+    font-size: 18px;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
 }
 
 .app-title {
-    font-size: 20px;
+    font-size: 17px;
     font-weight: 700;
     color: var(--text-primary);
     letter-spacing: -0.3px;
+    line-height: 1.2;
 }
 
 .app-subtitle {
-    font-size: 13px;
+    font-size: 11px;
     color: var(--text-secondary);
+    line-height: 1.2;
 }
 
 .header-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 .active-printer-badge {
     background-color: #f1f5f9;
     border: 1px solid var(--border);
-    padding: 6px 14px;
+    padding: 5px 12px;
     border-radius: 20px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     color: var(--text-secondary);
 }
 
@@ -111,8 +145,8 @@ body {
 }
 
 .btn-icon {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     border: 1px solid var(--border);
     background: var(--bg-surface);
@@ -130,19 +164,27 @@ body {
     border-color: var(--border-hover);
 }
 
-/* ================= Main Layout ================= */
+/* ================= Main Layout (Desktop Docks) ================= */
 .main-layout {
     display: grid;
-    grid-template-columns: 1fr 420px;
-    gap: 24px;
-    max-width: 1440px;
-    margin: 24px auto;
-    padding: 0 24px 60px 24px;
+    grid-template-columns: 1fr 410px;
+    gap: 18px;
+    height: calc(100vh - 54px);
+    width: 100%;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 14px 20px;
+    overflow: hidden;
 }
 
 @media (max-width: 1024px) {
     .main-layout {
         grid-template-columns: 1fr;
+        height: auto;
+        overflow-y: auto;
+    }
+    html, body {
+        overflow: auto;
     }
 }
 
@@ -150,26 +192,28 @@ body {
 .queue-section {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    height: 100%;
+    overflow: hidden;
+    gap: 10px;
 }
 
-/* Dropzone */
+/* Dropzone (Compact Desktop) */
 .dropzone {
     border: 2px dashed #93c5fd;
     background: linear-gradient(180deg, #f0f7ff 0%, #f8fafc 100%);
-    border-radius: var(--radius-lg);
-    padding: 36px 24px;
+    border-radius: var(--radius-md);
+    padding: 18px 16px;
     text-align: center;
     cursor: pointer;
     transition: var(--transition);
     position: relative;
+    flex-shrink: 0;
 }
 
 .dropzone:hover, .dropzone.drag-active {
     border-color: var(--primary);
     background: #ebf5ff;
-    transform: translateY(-2px);
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow-sm);
 }
 
 .dropzone.drag-active {
@@ -182,32 +226,32 @@ body {
 }
 
 .dropzone-icon {
-    width: 64px;
-    height: 64px;
-    margin: 0 auto 14px auto;
+    width: 44px;
+    height: 44px;
+    margin: 0 auto 8px auto;
     background: #dbeafe;
     color: var(--primary);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 28px;
+    font-size: 20px;
     transition: var(--transition);
 }
 
 .dropzone:hover .dropzone-icon {
-    transform: scale(1.1);
+    transform: scale(1.08);
 }
 
 .dropzone h3 {
-    font-size: 18px;
+    font-size: 15px;
     font-weight: 600;
-    margin-bottom: 6px;
+    margin-bottom: 2px;
     color: var(--text-primary);
 }
 
 .dropzone p {
-    font-size: 14px;
+    font-size: 12px;
     color: var(--text-secondary);
 }
 
@@ -220,20 +264,20 @@ body {
 .dropzone-tags {
     display: flex;
     justify-content: center;
-    gap: 16px;
-    margin-top: 14px;
+    gap: 12px;
+    margin-top: 8px;
 }
 
 .dropzone-tags span {
-    font-size: 12px;
-    background-color: rgba(255, 255, 255, 0.8);
+    font-size: 11px;
+    background-color: rgba(255, 255, 255, 0.85);
     border: 1px solid #bfdbfe;
-    padding: 4px 10px;
-    border-radius: 20px;
+    padding: 2px 8px;
+    border-radius: 12px;
     color: #1e40af;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
 }
 
 /* Queue Header */
@@ -241,39 +285,44 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 4px;
+    padding: 0 2px;
+    flex-shrink: 0;
 }
 
 .queue-stats {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 .queue-stats h2 {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 700;
 }
 
 .badge {
     background-color: #e2e8f0;
     color: var(--text-secondary);
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
     font-weight: 600;
 }
 
 .queue-actions {
     display: flex;
-    gap: 10px;
+    gap: 8px;
 }
 
 /* File List & Empty State */
 .file-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 6px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
 }
 
 .empty-state {
@@ -451,19 +500,22 @@ body {
     background: #fff;
 }
 
-/* ================= Right: Settings Panel ================= */
+/* ================= Right: Settings Panel (Desktop Dock) ================= */
 .settings-section {
-    position: sticky;
-    top: 90px;
-    align-self: start;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    align-self: stretch;
 }
 
 .settings-card {
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
     overflow: hidden;
+    margin-bottom: 12px;
 }
 
 .settings-header {

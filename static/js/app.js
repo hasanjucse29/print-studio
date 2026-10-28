@@ -870,6 +870,37 @@ document.addEventListener("DOMContentLoaded", () => {
         btnCancelPrint.textContent = "বাতিল করুন";
     });
 
+    // ================= Native Desktop UX Enhancements =================
+    // Disable web context menu (Inspect, Reload, etc.)
+    window.addEventListener("contextmenu", e => e.preventDefault());
+
+    // Native Desktop Keyboard Shortcuts
+    window.addEventListener("keydown", e => {
+        // Disable F5 & Ctrl+R browser reloads
+        if (e.key === "F5" || (e.ctrlKey && (e.key === "r" || e.key === "R"))) {
+            e.preventDefault();
+        }
+        // Ctrl+O: Open File Chooser
+        if (e.ctrlKey && (e.key === "o" || e.key === "O")) {
+            e.preventDefault();
+            fileInput.click();
+        }
+        // Ctrl+P: Quick Print All
+        if (e.ctrlKey && (e.key === "p" || e.key === "P")) {
+            e.preventDefault();
+            if (btnPrintAll && !btnPrintAll.disabled) {
+                btnPrintAll.click();
+            }
+        }
+        // Escape: Close modals
+        if (e.key === "Escape") {
+            closePreviewModal();
+            if (!progressModal.classList.contains("open") || !btnDonePrint.classList.contains("hidden")) {
+                progressModal.classList.remove("open");
+            }
+        }
+    });
+
     // ================= Initialize =================
     loadPrinters();
     refreshQueue();

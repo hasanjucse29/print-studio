@@ -36,3 +36,4 @@ $RECYCLE.BIN/
 # Temporary outputs
 test_*.pdf
 *.log
+config.json
