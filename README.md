@@ -111,7 +111,7 @@ print-studio/
 
 ---
 
-## 👨‍💻 Author & Credits (ডেভেলপার পরিচিতি)
+## 👨‍💻 Developer Information
 
 **Md Hasan Al Mamun**  
 - 🎓 **Department of Computer Science & Engineering**, Jahangirnagar University (JU CSE 29)
