@@ -98,142 +98,133 @@
                 <div class="settings-body">
                     
                     <!-- Printer Selection -->
-                    <div class="form-group">
+                    <div class="form-group form-group-compact">
                         <label for="printerSelect">
                             <i class="fa-solid fa-print"></i> কানেক্টেড প্রিন্টার
                         </label>
-                        <div class="select-wrapper">
-                            <select id="printerSelect" class="form-control">
-                                <option value="">প্রিন্টার খোঁজা হচ্ছে...</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Color Mode (Segmented Control) -->
-                    <div class="form-group">
-                        <label><i class="fa-solid fa-palette"></i> কালার মোড</label>
-                        <div class="segmented-control" id="colorModeControl">
-                            <button type="button" class="segment-btn active" data-color="bw">
-                                <i class="fa-solid fa-circle-half-stroke"></i> ব্ল্যাক অ্যান্ড হোয়াইট
-                            </button>
-                            <button type="button" class="segment-btn" data-color="color">
-                                <i class="fa-solid fa-fill-drip"></i> কালার
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Print Quality (Resolution / DPI) -->
-                    <div class="form-group">
-                        <label for="qualitySelect">
-                            <i class="fa-solid fa-gem"></i> প্রিন্ট কোয়ালিটি (DPI)
-                        </label>
-                        <select id="qualitySelect" class="form-control">
-                            <option value="600">লোড হচ্ছে...</option>
+                        <select id="printerSelect" class="form-control form-control-sm">
+                            <option value="">প্রিন্টার খোঁজা হচ্ছে...</option>
                         </select>
                     </div>
 
-                    <!-- Paper Size & Duplex (Row) -->
+                    <!-- Row 1: Color Mode & Quality (DPI) -->
                     <div class="form-row">
-                        <div class="form-group col-6">
-                            <label for="paperSizeSelect"><i class="fa-solid fa-sheet-plastic"></i> কাগজের সাইজ</label>
-                            <select id="paperSizeSelect" class="form-control">
-                                <option value="A4" selected>A4 (210×297 mm)</option>
-                                <option value="Letter">Letter (8.5×11 in)</option>
-                                <option value="Legal">Legal (8.5×14 in)</option>
-                            </select>
+                        <div class="form-group col-6 form-group-compact">
+                            <label><i class="fa-solid fa-palette"></i> কালার মোড</label>
+                            <div class="segmented-control segmented-control-sm" id="colorModeControl">
+                                <button type="button" class="segment-btn active" data-color="bw">
+                                    <i class="fa-solid fa-circle-half-stroke"></i> B&W
+                                </button>
+                                <button type="button" class="segment-btn" data-color="color">
+                                    <i class="fa-solid fa-fill-drip"></i> কালার
+                                </button>
+                            </div>
                         </div>
 
-                        <div class="form-group col-6">
-                            <label for="duplexSelect"><i class="fa-solid fa-repeat"></i> ডুপ্লেক্স (Duplex)</label>
-                            <select id="duplexSelect" class="form-control">
-                                <option value="simplex" selected>সিঙ্গেল পেজ (একপিঠ)</option>
-                                <option value="vertical">ডুপ্লেক্স (লং এজ/বইয়ের মতো)</option>
-                                <option value="horizontal">ডুপ্লেক্স (শর্ট এজ/ক্যালেন্ডার)</option>
+                        <div class="form-group col-6 form-group-compact">
+                            <label for="qualitySelect">
+                                <i class="fa-solid fa-gem"></i> কোয়ালিটি (DPI)
+                            </label>
+                            <select id="qualitySelect" class="form-control form-control-sm">
+                                <option value="600">লোড হচ্ছে...</option>
                             </select>
                         </div>
                     </div>
 
-                    <!-- Pages Per Sheet (N-Up) -->
-                    <div class="form-group">
-                        <label><i class="fa-solid fa-table-cells-large"></i> পেজ প্রতি শিট (N-up / মাল্টিপেজ)</label>
-                        <div class="nup-grid" id="nupControl">
+                    <!-- Row 2: Paper Size & Duplex -->
+                    <div class="form-row">
+                        <div class="form-group col-6 form-group-compact">
+                            <label for="paperSizeSelect"><i class="fa-solid fa-sheet-plastic"></i> সাইজ</label>
+                            <select id="paperSizeSelect" class="form-control form-control-sm">
+                                <option value="A4" selected>A4 (210×297)</option>
+                                <option value="Letter">Letter</option>
+                                <option value="Legal">Legal</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group col-6 form-group-compact">
+                            <label for="duplexSelect"><i class="fa-solid fa-repeat"></i> ডুপ্লেক্স</label>
+                            <select id="duplexSelect" class="form-control form-control-sm">
+                                <option value="simplex" selected>সিঙ্গেল (একপিঠ)</option>
+                                <option value="vertical">ডুপ্লেক্স (বইয়ের মতো)</option>
+                                <option value="horizontal">ডুপ্লেক্স (শর্ট এজ)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Row 3: Pages Per Sheet (N-Up) & Border -->
+                    <div class="form-group form-group-compact">
+                        <div class="nup-header-row">
+                            <label><i class="fa-solid fa-table-cells-large"></i> পেজ প্রতি শিট (N-up)</label>
+                            <label class="custom-checkbox custom-checkbox-inline">
+                                <input type="checkbox" id="chkDrawBorders" checked>
+                                <span class="checkmark"></span>
+                                বর্ডার লাইন
+                            </label>
+                        </div>
+                        <div class="nup-grid nup-grid-compact" id="nupControl">
                             <button type="button" class="nup-btn active" data-nup="1">
                                 <span class="nup-num">1</span>
-                                <span class="nup-label">নরমাল (১টি)</span>
+                                <span class="nup-label">নরমাল</span>
                             </button>
                             <button type="button" class="nup-btn" data-nup="2">
                                 <span class="nup-num">2</span>
-                                <span class="nup-label">২টি পেজ</span>
+                                <span class="nup-label">২ পেজ</span>
                             </button>
                             <button type="button" class="nup-btn" data-nup="4">
                                 <span class="nup-num">4</span>
-                                <span class="nup-label">৪টি পেজ (২×২)</span>
+                                <span class="nup-label">৪ পেজ</span>
                             </button>
                             <button type="button" class="nup-btn" data-nup="6">
                                 <span class="nup-num">6</span>
-                                <span class="nup-label">৬টি পেজ</span>
+                                <span class="nup-label">৬ পেজ</span>
                             </button>
-                        </div>
-                        <div class="form-checkbox-row">
-                            <label class="custom-checkbox">
-                                <input type="checkbox" id="chkDrawBorders" checked>
-                                <span class="checkmark"></span>
-                                পেজের চারপাশে সূক্ষ্ম বর্ডার লাইন দিন
-                            </label>
                         </div>
                     </div>
 
-                    <!-- Orientation & Copies (Row) -->
+                    <!-- Row 4: Orientation & Copies -->
                     <div class="form-row">
-                        <div class="form-group col-6">
+                        <div class="form-group col-6 form-group-compact">
                             <label for="orientationSelect"><i class="fa-solid fa-arrows-spin"></i> ওরিয়েন্টেশন</label>
-                            <select id="orientationSelect" class="form-control">
-                                <option value="auto" selected>অটোমেটিক (ফাইলের মতো ওরিয়েন্টেশন) ★</option>
-                                <option value="portrait">পোর্ট্রেট (লম্বালম্বি)</option>
-                                <option value="landscape">ল্যান্ডস্কেপ (আড়াআড়ি)</option>
+                            <select id="orientationSelect" class="form-control form-control-sm">
+                                <option value="auto" selected>অটো (ফাইলের মতো) ★</option>
+                                <option value="portrait">পোর্ট্রেট</option>
+                                <option value="landscape">ল্যান্ডস্কেপ</option>
                             </select>
                         </div>
 
-                        <div class="form-group col-6">
+                        <div class="form-group col-6 form-group-compact">
                             <label for="copiesInput"><i class="fa-regular fa-copy"></i> কপি সংখ্যা</label>
-                            <div class="stepper-input">
+                            <div class="stepper-input stepper-input-sm">
                                 <button type="button" class="stepper-btn" id="btnMinusCopy">-</button>
-                                <input type="number" id="copiesInput" value="1" min="1" max="99" class="form-control text-center">
+                                <input type="number" id="copiesInput" value="1" min="1" max="99" class="form-control form-control-sm text-center">
                                 <button type="button" class="stepper-btn" id="btnPlusCopy">+</button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Summary Box -->
-                    <div class="summary-box" id="summaryBox">
-                        <div class="summary-item">
-                            <span>প্রিন্টার:</span>
-                            <strong id="summaryPrinter">-</strong>
+                    <!-- Summary Compact Strip -->
+                    <div class="summary-compact-strip" id="summaryBox">
+                        <div class="summary-compact-item" id="summaryPrinterItem" title="নির্বাচিত প্রিন্টার">
+                            <i class="fa-solid fa-print"></i> <span id="summaryPrinter">-</span>
                         </div>
-                        <div class="summary-item">
-                            <span>কালার ও সাইজ:</span>
-                            <strong id="summaryColorPaper">B&W • A4</strong>
-                        </div>
-                        <div class="summary-item">
-                            <span>কোয়ালিটি:</span>
-                            <strong id="summaryQuality">600 DPI (ম্যাক্স)</strong>
-                        </div>
-                        <div class="summary-item">
-                            <span>প্রয়োজনীয় কাগজ (শিট):</span>
-                            <strong class="highlight-sheets" id="summarySheets">0 টি শিট</strong>
+                        <div class="summary-compact-row">
+                            <span class="summary-tag" id="summaryColorPaper">B&W • A4</span>
+                            <span class="summary-tag" id="summaryQuality">600 DPI</span>
+                            <span class="summary-tag summary-tag-sheets" id="summarySheets">0 টি কাগজ</span>
                         </div>
                     </div>
 
-                    <!-- Live Sheet Preview Trigger Button -->
-                    <button type="button" class="btn btn-outline w-100" id="btnShowSheetPreview" disabled>
-                        <i class="fa-solid fa-eye"></i> প্রিন্ট লেআউট প্রিভিউ দেখুন
-                    </button>
-
-                    <!-- Big Print Button -->
-                    <button type="button" class="btn btn-primary btn-lg w-100 btn-print-main" id="btnPrintAll" disabled>
-                        <i class="fa-solid fa-paper-plane"></i>
-                        <span>এক ক্লিকে প্রিন্ট করুন</span>
-                    </button>
+                    <!-- Action Buttons Row: Preview & Big Print Button side-by-side -->
+                    <div class="action-buttons-row">
+                        <button type="button" class="btn btn-outline btn-sm btn-preview-compact" id="btnShowSheetPreview" title="প্রিন্ট লেআউট প্রিভিউ দেখুন" disabled>
+                            <i class="fa-solid fa-eye"></i> প্রিভিউ
+                        </button>
+                        <button type="button" class="btn btn-primary btn-print-main-compact" id="btnPrintAll" disabled>
+                            <i class="fa-solid fa-paper-plane"></i>
+                            <span>এক ক্লিকে প্রিন্ট করুন</span>
+                        </button>
+                    </div>
 
                 </div>
             </div>

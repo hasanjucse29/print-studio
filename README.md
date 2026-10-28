@@ -67,18 +67,20 @@ cd print-studio
 pip install -r requirements.txt
 ```
 
-### 3. Launching the App (চালু করার পদ্ধতি)
+### 3. Launching & Installing (চালু ও ইনস্টল করার পদ্ধতি)
 
-- **Option A (Standalone Portable Window):**  
+- **Option A (Official Windows Installer - Setup Wizard):**  
+  Run **`dist/PrintStudio_Setup_v1.0.exe`**. Standard Windows installation wizard. Installs cleanly to AppData/Programs, creates Start Menu and Desktop shortcuts, and registers in Windows Settings (Add or Remove Programs).
+- **Option B (Standalone Portable Window):**  
   Run **`dist/PrintStudio.exe`**. Launches in its own dedicated, native desktop window (no browser tabs, no terminal). Completely portable on any USB drive.
-- **Option B (Standard Web Launcher):**  
+- **Option C (Standard Web Launcher):**  
   Double-click **`Run_Print_Studio.bat`**. This launches the local server and opens your default browser.
-- **Option C (Quiet Background Launcher):**  
+- **Option D (Quiet Background Launcher):**  
   Double-click **`Start_Print_Studio_Quiet.vbs`**. Runs silently in the background.
 
-### 4. Compiling New Portable .exe (পোর্টেবল বিল্ড করার পদ্ধতি)
-To rebuild `PrintStudio.exe` at any time:
-- Double-click **`build_portable.bat`**. The resulting standalone binary will be created in `dist/PrintStudio.exe`.
+### 4. Compiling Executables & Installers (বিল্ড করার পদ্ধতি)
+- **Rebuild Portable .exe:** Double-click **`build_portable.bat`** (output: `dist/PrintStudio.exe`).
+- **Rebuild Windows Installer:** Double-click **`build_installer.bat`** (output: `dist/PrintStudio_Setup_v1.0.exe`).
 
 ---
 

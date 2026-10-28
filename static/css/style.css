@@ -500,13 +500,14 @@ img {
     background: #fff;
 }
 
-/* ================= Right: Settings Panel (Desktop Dock) ================= */
+/* ================= Right: Settings Panel (Single Chunk, No Scroll) ================= */
 .settings-section {
     height: 100%;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding-right: 4px;
+    overflow: hidden;
+    padding-right: 0;
     align-self: stretch;
+    display: flex;
+    flex-direction: column;
 }
 
 .settings-card {
@@ -515,37 +516,195 @@ img {
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     overflow: hidden;
-    margin-bottom: 12px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0;
 }
 
 .settings-header {
     background: #f8fafc;
     border-bottom: 1px solid var(--border);
-    padding: 16px 20px;
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.settings-header h2 {
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-primary);
+}
+
+.settings-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.settings-body {
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1 1 auto;
+    justify-content: space-between;
+    overflow: hidden;
+}
+
+/* Compact Form Controls for Single Chunk */
+.form-group-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 0;
+}
+
+.form-group-compact label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1.2;
+}
+
+.form-control-sm {
+    height: 32px;
+    padding: 4px 8px;
+    font-size: 12px;
+    border-radius: 4px;
+}
+
+.segmented-control-sm {
+    padding: 2px;
+    border-radius: 4px;
+}
+
+.segmented-control-sm .segment-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    border-radius: 3px;
+    gap: 4px;
+}
+
+.nup-header-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
-.settings-header h2 {
-    font-size: 16px;
-    font-weight: 700;
+.custom-checkbox-inline {
+    font-size: 11px !important;
+    gap: 4px !important;
+}
+
+.nup-grid-compact {
+    gap: 6px !important;
+}
+
+.nup-grid-compact .nup-btn {
+    padding: 4px 2px !important;
+    border-radius: 4px;
+    gap: 1px;
+}
+
+.nup-grid-compact .nup-num {
+    font-size: 13px !important;
+}
+
+.nup-grid-compact .nup-label {
+    font-size: 9px !important;
+}
+
+.stepper-input-sm {
     display: flex;
     align-items: center;
-    gap: 8px;
-    color: var(--text-primary);
 }
 
-.settings-hint {
-    font-size: 12px;
-    color: var(--text-muted);
+.stepper-input-sm .stepper-btn {
+    width: 30px;
+    height: 32px;
+    font-size: 14px;
 }
 
-.settings-body {
-    padding: 20px;
+/* Compact Summary Strip */
+.summary-compact-strip {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.summary-compact-item {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.summary-compact-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.summary-tag {
+    background: #e2e8f0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.summary-tag-sheets {
+    background: var(--primary-light);
+    color: var(--primary);
+    font-weight: 700;
+    margin-left: auto;
+}
+
+/* Action Buttons Row */
+.action-buttons-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.btn-preview-compact {
+    flex: 0 0 auto;
+    height: 40px;
+    padding: 0 14px;
+    font-size: 12px;
+    border-radius: var(--radius-sm);
+}
+
+.btn-print-main-compact {
+    flex: 1 1 auto;
+    height: 40px;
+    font-size: 14px;
+    font-weight: 700;
+    border-radius: var(--radius-sm);
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+    margin-top: 0 !important;
 }
 
 /* Form Controls */
