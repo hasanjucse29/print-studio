@@ -41,8 +41,170 @@ def is_virtual_printer(name: str) -> bool:
     return any(v in n for v in ["pdf", "onenote", "xps", "fax", "writer", "document"])
 
 
+def get_printer_status(printer_name: str) -> Dict[str, Any]:
+    """Query live Windows Spooler status for a given printer."""
+    try:
+        h = win32print.OpenPrinter(printer_name)
+        info = win32print.GetPrinter(h, 2)
+        win32print.ClosePrinter(h)
+
+        st = info.get("Status", 0)
+        attrs = info.get("Attributes", 0)
+        jobs = info.get("cJobs", 0)
+        is_virt = is_virtual_printer(printer_name)
+
+        # Work offline attribute or status offline flag
+        if (attrs & win32print.PRINTER_ATTRIBUTE_WORK_OFFLINE) or (st & 0x00000080):
+            return {
+                "state": "offline",
+                "label": "অফলাইন (কানেক্টেড নয়)",
+                "short_label": "অফলাইন",
+                "css": "offline",
+                "icon": "fa-circle-xmark",
+                "jobs": jobs,
+                "is_ready": False,
+                "is_virtual": is_virt
+            }
+        if st & 0x00000008:
+            return {
+                "state": "paper_jam",
+                "label": "কাগজ আটকে আছে (Paper Jam)",
+                "short_label": "জ্যাম",
+                "css": "warning",
+                "icon": "fa-triangle-exclamation",
+                "jobs": jobs,
+                "is_ready": False,
+                "is_virtual": is_virt
+            }
+        if st & 0x00000010:
+            return {
+                "state": "paper_out",
+                "label": "কাগজ নেই (Paper Out)",
+                "short_label": "কাগজ নেই",
+                "css": "warning",
+                "icon": "fa-triangle-exclamation",
+                "jobs": jobs,
+                "is_ready": False,
+                "is_virtual": is_virt
+            }
+        if st & 0x00400000:
+            return {
+                "state": "door_open",
+                "label": "কভার খোলা (Door Open)",
+                "short_label": "কভার খোলা",
+                "css": "warning",
+                "icon": "fa-triangle-exclamation",
+                "jobs": jobs,
+                "is_ready": False,
+                "is_virtual": is_virt
+            }
+        if st & 0x00000001:
+            return {
+                "state": "paused",
+                "label": "পজ করা আছে (Paused)",
+                "short_label": "পজড",
+                "css": "warning",
+                "icon": "fa-pause",
+                "jobs": jobs,
+                "is_ready": False,
+                "is_virtual": is_virt
+            }
+        if st & (0x00000200 | 0x00000400 | 0x00004000):
+            return {
+                "state": "busy",
+                "label": f"ব্যস্ত ({jobs}টি কাজ চলছে)",
+                "short_label": "ব্যস্ত",
+                "css": "busy",
+                "icon": "fa-arrows-rotate fa-spin",
+                "jobs": jobs,
+                "is_ready": True,
+                "is_virtual": is_virt
+            }
+        if st & 0x00000002:
+            return {
+                "state": "error",
+                "label": "প্রিন্টারে সমস্যা (Error)",
+                "short_label": "ত্রুটি",
+                "css": "danger",
+                "icon": "fa-circle-exclamation",
+                "jobs": jobs,
+                "is_ready": False,
+                "is_virtual": is_virt
+            }
+        if jobs > 0:
+            return {
+                "state": "printing",
+                "label": f"প্রিন্ট চলছে ({jobs}টি কিউ)",
+                "short_label": f"কিউ ({jobs})",
+                "css": "busy",
+                "icon": "fa-spinner fa-spin",
+                "jobs": jobs,
+                "is_ready": True,
+                "is_virtual": is_virt
+            }
+
+        return {
+            "state": "ready",
+            "label": "রেডি (প্রিন্টের জন্য প্রস্তুত)",
+            "short_label": "রেডি",
+            "css": "ready",
+            "icon": "fa-circle-check",
+            "jobs": 0,
+            "is_ready": True,
+            "is_virtual": is_virt
+        }
+    except Exception as e:
+        return {
+            "state": "unknown",
+            "label": "স্ট্যাটাস পাওয়া যায়নি",
+            "short_label": "অজ্ঞাত",
+            "css": "unknown",
+            "icon": "fa-circle-question",
+            "jobs": 0,
+            "is_ready": False,
+            "error": str(e),
+            "is_virtual": is_virtual_printer(printer_name)
+        }
+
+
+def build_quality_options(max_dpi: int, hardware_dpis: List[int]) -> List[Dict[str, Any]]:
+    """Build a rich list of selectable DPI options with max pre-selected."""
+    candidates = set(hardware_dpis)
+    candidates.add(max_dpi)
+
+    if max_dpi >= 1200:
+        candidates.update([1200, 600, 300, 150])
+    elif max_dpi >= 600:
+        candidates.update([600, 400, 300, 150])
+    elif max_dpi >= 300:
+        candidates.update([300, 200, 150])
+    else:
+        candidates.update([max_dpi, 150])
+
+    filtered = sorted([d for d in candidates if d <= max_dpi and d >= 100], reverse=True)
+    options = []
+    for d in filtered:
+        is_max = (d == max_dpi)
+        if is_max:
+            lbl = f"{d} DPI (ম্যাক্স / সর্বোচ্চ স্পষ্ট) ★"
+        elif d >= 600:
+            lbl = f"{d} DPI (হাই কোয়ালিটি / ফাইন)"
+        elif d >= 400:
+            lbl = f"{d} DPI (ফাইন কোয়ালিটি / শার্প)"
+        elif d >= 300:
+            lbl = f"{d} DPI (স্ট্যান্ডার্ড কোয়ালিটি)"
+        else:
+            lbl = f"{d} DPI (ড্রাফট / দ্রুত ও সাশ্রয়ী)"
+        options.append({
+            "dpi": d,
+            "label": lbl,
+            "is_default": is_max
+        })
+    return options
+
+
 def list_printers() -> List[Dict[str, Any]]:
-    """Enumerate Windows printers, query supported resolutions, and identify capabilities."""
+    """Enumerate Windows printers, query supported resolutions, live status, and identify capabilities."""
     printers_list = []
     default_printer = ""
     try:
@@ -89,6 +251,8 @@ def list_printers() -> List[Dict[str, Any]]:
             supported_dpis = [300, 600]
 
         max_dpi = max(supported_dpis)
+        quality_options = build_quality_options(max_dpi, supported_dpis)
+        status = get_printer_status(p_name)
 
         printers_list.append({
             "name": p_name,
@@ -97,7 +261,9 @@ def list_printers() -> List[Dict[str, Any]]:
             "duplex_supported": duplex_supported,
             "color_supported": color_supported,
             "supported_dpis": supported_dpis,
-            "max_dpi": max_dpi
+            "max_dpi": max_dpi,
+            "quality_options": quality_options,
+            "status": status
         })
 
     # Sort order: physical printers first, then virtual; default printer first within group
@@ -485,15 +651,27 @@ def execute_print_job(
             dc_h = dc.GetDeviceCaps(win32con.VERTRES)
 
             # High-res canvas matching target DPI
-            # 600 DPI: scale 4.167 for maximum sharpness, 300 DPI: scale 2.5
-            if g_dpi >= 600:
+            is_land = (dc_w > dc_h)
+            if g_dpi >= 1200:
+                render_scale = 5.5
+                max_long, max_short = 4960, 3508
+            elif g_dpi >= 600:
                 render_scale = 4.167
-                comp_w = min(dc_w, 3508 if dc_w > dc_h else 2480)
-                comp_h = min(dc_h, 2480 if dc_w > dc_h else 3508)
-            else:
+                max_long, max_short = 3508, 2480
+            elif g_dpi >= 400:
+                render_scale = 3.333
+                max_long, max_short = 2976, 2102
+            elif g_dpi >= 300:
                 render_scale = 2.5
-                comp_w = min(dc_w, 2480 if dc_w > dc_h else 1754)
-                comp_h = min(dc_h, 1754 if dc_w > dc_h else 2480)
+                max_long, max_short = 2480, 1754
+            else:
+                render_scale = 1.5
+                max_long, max_short = 1754, 1240
+
+            target_cw = max_long if is_land else max_short
+            target_ch = max_short if is_land else max_long
+            comp_w = min(dc_w, target_cw)
+            comp_h = min(dc_h, target_ch)
 
             total_doc_sheets = plan["sheets_needed"]
             sheet_num = 0

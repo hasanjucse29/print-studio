@@ -35,6 +35,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const qualitySelect = document.getElementById("qualitySelect");
     const activePrinterBadge = document.getElementById("activePrinterBadge");
     const activePrinterName = document.getElementById("activePrinterName");
+    const headerStatusDot = document.getElementById("headerStatusDot");
+    const headerStatusTag = document.getElementById("headerStatusTag");
+    const printerStatusPill = document.getElementById("printerStatusPill");
+    const printerStatusText = document.getElementById("printerStatusText");
     const btnRefreshPrinters = document.getElementById("btnRefreshPrinters");
     const colorModeControl = document.getElementById("colorModeControl");
     const paperSizeSelect = document.getElementById("paperSizeSelect");
@@ -46,6 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnMinusCopy = document.getElementById("btnMinusCopy");
     const btnPlusCopy = document.getElementById("btnPlusCopy");
     const summaryPrinter = document.getElementById("summaryPrinter");
+    const summaryPrinterStatus = document.getElementById("summaryPrinterStatus");
     const summaryColorPaper = document.getElementById("summaryColorPaper");
     const summaryQuality = document.getElementById("summaryQuality");
     const summarySheets = document.getElementById("summarySheets");
@@ -152,14 +157,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 printerSelect.innerHTML = "";
                 
                 let chosenPrinter = "";
-                // If saved printer exists, prefer it
+                // If saved printer exists and is in the list, prefer it
                 if (savedSettings && savedSettings.printer && state.printers.some(p => p.name === savedSettings.printer)) {
                     chosenPrinter = savedSettings.printer;
                 } else {
-                    const firstPhysical = state.printers.find(p => !p.is_virtual);
+                    // Prefer online physical printer first, then any physical, then default
+                    const onlinePhysical = state.printers.find(p => !p.is_virtual && p.status && p.status.is_ready);
+                    const anyPhysical = state.printers.find(p => !p.is_virtual);
                     const defaultPrinter = state.printers.find(p => p.is_default);
-                    if (firstPhysical) {
-                        chosenPrinter = firstPhysical.name;
+                    if (onlinePhysical) {
+                        chosenPrinter = onlinePhysical.name;
+                    } else if (anyPhysical) {
+                        chosenPrinter = anyPhysical.name;
                     } else if (defaultPrinter) {
                         chosenPrinter = defaultPrinter.name;
                     } else {
@@ -170,10 +179,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 state.printers.forEach(p => {
                     const opt = document.createElement("option");
                     opt.value = p.name;
-                    const icon = p.is_virtual ? "📄" : "🖨️";
-                    const tag = p.is_virtual ? "[ফাইল]" : "[হার্ডওয়্যার প্রিন্টার]";
-                    const defTag = p.is_default ? " ★ (উইন্ডোজ ডিফল্ট)" : "";
-                    opt.textContent = `${icon} ${p.name} ${tag}${defTag}`;
+                    
+                    let statusIcon = "🟢";
+                    let statusLabel = p.status ? p.status.short_label : "রেডি";
+                    if (p.status?.state === "offline") {
+                        statusIcon = "🔴";
+                    } else if (p.status?.state === "busy" || p.status?.state === "printing") {
+                        statusIcon = "🟡";
+                    } else if (p.status?.state === "warning" || p.status?.state === "paper_out" || p.status?.state === "paper_jam") {
+                        statusIcon = "⚠️";
+                    } else if (p.is_virtual) {
+                        statusIcon = "⚪";
+                    }
+
+                    const defTag = p.is_default ? " ★" : "";
+                    opt.textContent = `${statusIcon} ${p.name} [${statusLabel}]${defTag}`;
                     
                     if (p.name === chosenPrinter) {
                         opt.selected = true;
@@ -183,7 +203,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
 
                 state.selectedPrinter = chosenPrinter;
-                updateActivePrinterBadge();
+                updatePrinterStatusDisplay(chosenPrinter);
                 updateQualityDropdown(chosenPrinter);
                 updateSummary();
             } else {
@@ -196,10 +216,57 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    function updateActivePrinterBadge() {
-        const active = state.selectedPrinter || "প্রিন্টার পাওয়া যায়নি";
-        activePrinterName.textContent = active;
-        summaryPrinter.textContent = active;
+    function updatePrinterStatusDisplay(printerName, liveStatus = null) {
+        const printer = state.printers.find(p => p.name === printerName);
+        const status = liveStatus || (printer && printer.status) || {
+            state: "unknown",
+            label: "অজ্ঞাত",
+            short_label: "অজ্ঞাত",
+            css: "unknown",
+            icon: "fa-circle-question",
+            is_ready: false
+        };
+
+        if (printer && liveStatus) {
+            printer.status = liveStatus;
+        }
+
+        const cssClass = `status-${status.css || 'unknown'}`;
+        const allStatusClasses = ["status-ready", "status-offline", "status-busy", "status-warning", "status-unknown"];
+
+        // 1. Top Header Badge
+        if (activePrinterName) activePrinterName.textContent = printerName || "প্রিন্টার পাওয়া যায়নি";
+        if (headerStatusDot) {
+            headerStatusDot.className = "status-indicator-dot";
+            headerStatusDot.classList.add(cssClass);
+        }
+        if (headerStatusTag) {
+            headerStatusTag.className = "status-tag";
+            headerStatusTag.classList.add(cssClass);
+            headerStatusTag.textContent = status.short_label || "রেডি";
+        }
+
+        // 2. Settings Panel Status Pill
+        if (printerStatusPill) {
+            printerStatusPill.className = "printer-status-pill";
+            printerStatusPill.classList.add(cssClass);
+            const dot = printerStatusPill.querySelector(".status-dot");
+            if (dot) {
+                dot.className = "status-dot";
+                dot.classList.add(cssClass);
+            }
+        }
+        if (printerStatusText) {
+            printerStatusText.textContent = status.label || "রেডি";
+        }
+
+        // 3. Summary Strip
+        if (summaryPrinter) summaryPrinter.textContent = printerName || "-";
+        if (summaryPrinterStatus) {
+            summaryPrinterStatus.className = "summary-status-tag";
+            summaryPrinterStatus.classList.add(cssClass);
+            summaryPrinterStatus.textContent = status.short_label || "রেডি";
+        }
     }
 
     function updateQualityDropdown(printerName) {
@@ -207,35 +274,89 @@ document.addEventListener("DOMContentLoaded", () => {
         qualitySelect.innerHTML = "";
         
         const printer = state.printers.find(p => p.name === printerName);
-        const dpis = (printer && printer.supported_dpis && printer.supported_dpis.length > 0)
-            ? printer.supported_dpis
-            : [300, 600];
-        const maxDpi = (printer && printer.max_dpi) ? printer.max_dpi : Math.max(...dpis);
+        let options = (printer && printer.quality_options && printer.quality_options.length > 0)
+            ? printer.quality_options
+            : null;
 
-        // Sort high to low so highest DPI is at top
-        const sortedDpis = [...dpis].sort((a, b) => b - a);
+        // Fallback quality tiers if not provided by backend
+        if (!options) {
+            const dpis = (printer && printer.supported_dpis && printer.supported_dpis.length > 0)
+                ? printer.supported_dpis
+                : [300, 600];
+            const maxDpi = (printer && printer.max_dpi) ? printer.max_dpi : Math.max(...dpis);
+            const candidates = new Set(dpis);
+            candidates.add(maxDpi);
 
-        sortedDpis.forEach(dpi => {
+            if (maxDpi >= 1200) [1200, 600, 300, 150].forEach(d => candidates.add(d));
+            else if (maxDpi >= 600) [600, 400, 300, 150].forEach(d => candidates.add(d));
+            else if (maxDpi >= 300) [300, 200, 150].forEach(d => candidates.add(d));
+            else [maxDpi, 150].forEach(d => candidates.add(d));
+
+            const sorted = Array.from(candidates).filter(d => d <= maxDpi && d >= 100).sort((a, b) => b - a);
+            options = sorted.map(d => {
+                const isMax = (d === maxDpi);
+                let lbl = `${d} DPI`;
+                if (isMax) lbl += " (ম্যাক্স / সর্বোচ্চ স্পষ্ট) ★";
+                else if (d >= 600) lbl += " (হাই কোয়ালিটি / ফাইন)";
+                else if (d >= 400) lbl += " (ফাইন কোয়ালিটি / শার্প)";
+                else if (d >= 300) lbl += " (স্ট্যান্ডার্ড কোয়ালিটি)";
+                else lbl += " (ড্রাফট / দ্রুত ও সাশ্রয়ী)";
+                return { dpi: d, label: lbl, is_default: isMax };
+            });
+        }
+
+        const maxOption = options.find(o => o.is_default) || options[0];
+        const defaultDpi = maxOption ? maxOption.dpi : 600;
+
+        // Auto-select max DPI by default; if user had selected another valid tier, preserve it
+        let selectedDpi = defaultDpi;
+        if (state.globalSettings.dpi && options.some(o => o.dpi === state.globalSettings.dpi)) {
+            selectedDpi = state.globalSettings.dpi;
+        }
+
+        options.forEach(optData => {
             const opt = document.createElement("option");
-            opt.value = dpi;
-            const isMax = (dpi === maxDpi);
-            let label = `${dpi} DPI`;
-            if (isMax) label += " (ম্যাক্স / সর্বোচ্চ কোয়ালিটি) ★";
-            else if (dpi >= 600) label += " (হাই কোয়ালিটি)";
-            else if (dpi >= 300) label += " (স্ট্যান্ডার্ড কোয়ালিটি)";
-            else label += " (ড্রাফট)";
-            
-            opt.textContent = label;
-            if (isMax) opt.selected = true;
+            opt.value = optData.dpi;
+            opt.textContent = optData.label;
+            if (optData.dpi === selectedDpi) {
+                opt.selected = true;
+            }
             qualitySelect.appendChild(opt);
         });
 
-        // Auto-select maximum DPI by default!
-        state.globalSettings.dpi = maxDpi;
+        state.globalSettings.dpi = selectedDpi;
         if (summaryQuality) {
-            summaryQuality.textContent = `${maxDpi} DPI (ম্যাক্স)`;
+            const isMax = selectedDpi === (printer ? printer.max_dpi : defaultDpi);
+            summaryQuality.textContent = `${selectedDpi} DPI ${isMax ? "(ম্যাক্স)" : ""}`;
         }
     }
+
+    async function fetchLivePrinterStatus(printerName) {
+        if (!printerName) return;
+        try {
+            const res = await fetch(`/api/printer_status?printer=${encodeURIComponent(printerName)}`);
+            const data = await res.json();
+            if (data.success && data.status) {
+                updatePrinterStatusDisplay(printerName, data.status);
+            }
+        } catch (e) {
+            // silent background poll failure
+        }
+    }
+
+    // Dynamic background polling for live printer status (every 6 seconds)
+    setInterval(() => {
+        if (state.selectedPrinter && !state.currentJobId) {
+            fetchLivePrinterStatus(state.selectedPrinter);
+        }
+    }, 6000);
+
+    // Refresh live printer status whenever user returns to the window
+    window.addEventListener("focus", () => {
+        if (state.selectedPrinter && !state.currentJobId) {
+            fetchLivePrinterStatus(state.selectedPrinter);
+        }
+    });
 
     // ================= Drag & Drop Setup =================
     ["dragenter", "dragover", "dragleave", "drop"].forEach(eventName => {
@@ -558,9 +679,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // ================= Settings Event Handlers =================
     printerSelect.addEventListener("change", e => {
         state.selectedPrinter = e.target.value;
-        updateActivePrinterBadge();
+        updatePrinterStatusDisplay(e.target.value);
         updateQualityDropdown(e.target.value);
         updateSummary();
+        fetchLivePrinterStatus(e.target.value);
     });
 
     if (qualitySelect) {
@@ -758,6 +880,12 @@ document.addEventListener("DOMContentLoaded", () => {
         if (state.queue.length === 0) {
             showToast("প্রিন্ট করার জন্য কোনো ফাইল নেই", "error");
             return;
+        }
+
+        // Check if selected printer is offline and notify user
+        const currentPrinter = state.printers.find(p => p.name === state.selectedPrinter);
+        if (currentPrinter && currentPrinter.status && currentPrinter.status.state === "offline") {
+            showToast("সতর্কতা: প্রিন্টারটি বর্তমানে অফলাইনে আছে! উইন্ডোজ কিউতে প্রিন্ট জমা থাকবে।", "info");
         }
 
         // Open progress modal

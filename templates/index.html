@@ -26,11 +26,12 @@
             </div>
         </div>
         <div class="header-right">
-            <div class="active-printer-badge" id="activePrinterBadge">
-                <i class="fa-solid fa-circle-check text-success"></i>
+            <div class="active-printer-badge" id="activePrinterBadge" title="সক্রিয় প্রিন্টার ও লাইভ স্ট্যাটাস">
+                <span class="status-indicator-dot status-ready" id="headerStatusDot"></span>
                 <span id="activePrinterName">লোড হচ্ছে...</span>
+                <span class="status-tag status-ready" id="headerStatusTag">রেডি</span>
             </div>
-            <button class="btn-icon" id="btnRefreshPrinters" title="প্রিন্টার রিফ্রেশ করুন">
+            <button class="btn-icon" id="btnRefreshPrinters" title="প্রিন্টারের অবস্থা ও তালিকা রিফ্রেশ করুন">
                 <i class="fa-solid fa-arrows-rotate"></i>
             </button>
         </div>
@@ -99,9 +100,15 @@
                     
                     <!-- Printer Selection -->
                     <div class="form-group form-group-compact">
-                        <label for="printerSelect">
-                            <i class="fa-solid fa-print"></i> কানেক্টেড প্রিন্টার
-                        </label>
+                        <div class="printer-label-row">
+                            <label for="printerSelect">
+                                <i class="fa-solid fa-print"></i> কানেক্টেড প্রিন্টার
+                            </label>
+                            <span class="printer-status-pill status-ready" id="printerStatusPill" title="নির্বাচিত প্রিন্টারের লাইভ অবস্থা">
+                                <span class="status-dot"></span>
+                                <span id="printerStatusText">রেডি (অনলাইন)</span>
+                            </span>
+                        </div>
                         <select id="printerSelect" class="form-control form-control-sm">
                             <option value="">প্রিন্টার খোঁজা হচ্ছে...</option>
                         </select>
@@ -206,7 +213,9 @@
                     <!-- Summary Compact Strip -->
                     <div class="summary-compact-strip" id="summaryBox">
                         <div class="summary-compact-item" id="summaryPrinterItem" title="নির্বাচিত প্রিন্টার">
-                            <i class="fa-solid fa-print"></i> <span id="summaryPrinter">-</span>
+                            <i class="fa-solid fa-print"></i>
+                            <span id="summaryPrinter" class="summary-printer-name">-</span>
+                            <span class="summary-status-tag status-ready" id="summaryPrinterStatus">রেডি</span>
                         </div>
                         <div class="summary-compact-row">
                             <span class="summary-tag" id="summaryColorPaper">B&W • A4</span>

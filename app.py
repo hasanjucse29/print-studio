@@ -69,6 +69,23 @@ def get_printers():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/printer_status", methods=["GET"])
+def get_printer_status_route():
+    """Return live status for a specific printer or all printers."""
+    printer_name = request.args.get("printer", "").strip()
+    try:
+        if printer_name:
+            status = print_engine.get_printer_status(printer_name)
+            return jsonify({"success": True, "printer": printer_name, "status": status})
+        else:
+            printers = print_engine.list_printers()
+            statuses = {p["name"]: p.get("status") for p in printers}
+            return jsonify({"success": True, "statuses": statuses})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/upload", methods=["POST"])
 def upload_files():
     """Handle drag-and-drop or file input upload of PDF files."""
