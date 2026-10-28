@@ -287,32 +287,36 @@ document.addEventListener("DOMContentLoaded", () => {
             const candidates = new Set(dpis);
             candidates.add(maxDpi);
 
-            if (maxDpi >= 1200) [1200, 600, 300, 150].forEach(d => candidates.add(d));
-            else if (maxDpi >= 600) [600, 400, 300, 150].forEach(d => candidates.add(d));
-            else if (maxDpi >= 300) [300, 200, 150].forEach(d => candidates.add(d));
+            if (maxDpi >= 2400) [2400, 1200, 600, 300, 150].forEach(d => candidates.add(d));
+            else if (maxDpi >= 1200) [1200, 600, 300, 150].forEach(d => candidates.add(d));
+            else if (maxDpi >= 600) [600, 300, 150].forEach(d => candidates.add(d));
+            else if (maxDpi >= 300) [300, 150].forEach(d => candidates.add(d));
             else [maxDpi, 150].forEach(d => candidates.add(d));
 
             const sorted = Array.from(candidates).filter(d => d <= maxDpi && d >= 100).sort((a, b) => b - a);
             options = sorted.map(d => {
                 const isMax = (d === maxDpi);
                 let lbl = `${d} DPI`;
-                if (isMax) lbl += " (ম্যাক্স / সর্বোচ্চ স্পষ্ট) ★";
-                else if (d >= 600) lbl += " (হাই কোয়ালিটি / ফাইন)";
-                else if (d >= 400) lbl += " (ফাইন কোয়ালিটি / শার্প)";
-                else if (d >= 300) lbl += " (স্ট্যান্ডার্ড কোয়ালিটি)";
-                else lbl += " (ড্রাফট / দ্রুত ও সাশ্রয়ী)";
+                if (isMax) {
+                    const desc = d >= 1200 ? "আল্ট্রা কোয়ালিটি" : d >= 600 ? "হাই কোয়ালিটি" : "স্ট্যান্ডার্ড";
+                    lbl += ` (এই প্রিন্টারের সর্বোচ্চ / ${desc}) ★`;
+                } else if (d >= 1200) {
+                    lbl += " (আল্ট্রা কোয়ালিটি / ফাইন)";
+                } else if (d >= 600) {
+                    lbl += " (হাই কোয়ালিটি / স্পষ্ট)";
+                } else if (d >= 300) {
+                    lbl += " (স্ট্যান্ডার্ড কোয়ালিটি)";
+                } else {
+                    lbl += " (ড্রাফট / দ্রুত ও সাশ্রয়ী)";
+                }
                 return { dpi: d, label: lbl, is_default: isMax };
             });
         }
 
+        // Dynamically pre-select THIS printer's maximum DPI by default!
         const maxOption = options.find(o => o.is_default) || options[0];
         const defaultDpi = maxOption ? maxOption.dpi : 600;
-
-        // Auto-select max DPI by default; if user had selected another valid tier, preserve it
-        let selectedDpi = defaultDpi;
-        if (state.globalSettings.dpi && options.some(o => o.dpi === state.globalSettings.dpi)) {
-            selectedDpi = state.globalSettings.dpi;
-        }
+        const selectedDpi = defaultDpi;
 
         options.forEach(optData => {
             const opt = document.createElement("option");
@@ -326,8 +330,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         state.globalSettings.dpi = selectedDpi;
         if (summaryQuality) {
-            const isMax = selectedDpi === (printer ? printer.max_dpi : defaultDpi);
-            summaryQuality.textContent = `${selectedDpi} DPI ${isMax ? "(ম্যাক্স)" : ""}`;
+            summaryQuality.textContent = `${selectedDpi} DPI (সর্বোচ্চ)`;
         }
     }
 

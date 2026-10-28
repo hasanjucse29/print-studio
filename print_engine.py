@@ -168,33 +168,49 @@ def get_printer_status(printer_name: str) -> Dict[str, Any]:
 
 
 def build_quality_options(max_dpi: int, hardware_dpis: List[int]) -> List[Dict[str, Any]]:
-    """Build a rich list of selectable DPI options with max pre-selected."""
-    candidates = set(hardware_dpis)
-    candidates.add(max_dpi)
+    """Build dynamically adapted quality tiers strictly bounded by this printer's hardware maximum."""
+    candidate_set = set(hardware_dpis)
+    candidate_set.add(max_dpi)
 
-    if max_dpi >= 1200:
-        candidates.update([1200, 600, 300, 150])
+    if max_dpi >= 2400:
+        candidate_set.update([2400, 1200, 600, 300, 150])
+    elif max_dpi >= 1200:
+        candidate_set.update([1200, 600, 300, 150])
     elif max_dpi >= 600:
-        candidates.update([600, 400, 300, 150])
+        candidate_set.update([600, 300, 150])
+    elif max_dpi >= 400:
+        candidate_set.update([max_dpi, 300, 150])
     elif max_dpi >= 300:
-        candidates.update([300, 200, 150])
+        candidate_set.update([300, 150])
     else:
-        candidates.update([max_dpi, 150])
+        candidate_set.update([max_dpi, 150])
 
-    filtered = sorted([d for d in candidates if d <= max_dpi and d >= 100], reverse=True)
+    # Filter out anything higher than what THIS printer supports
+    valid_dpis = sorted([d for d in candidate_set if d <= max_dpi and d >= 100], reverse=True)
     options = []
-    for d in filtered:
+    for d in valid_dpis:
         is_max = (d == max_dpi)
         if is_max:
-            lbl = f"{d} DPI (ম্যাক্স / সর্বোচ্চ স্পষ্ট) ★"
+            if d >= 2400:
+                tier_desc = "ফটো কোয়ালিটি"
+            elif d >= 1200:
+                tier_desc = "আল্ট্রা কোয়ালিটি"
+            elif d >= 600:
+                tier_desc = "হাই কোয়ালিটি"
+            elif d >= 300:
+                tier_desc = "স্ট্যান্ডার্ড কোয়ালিটি"
+            else:
+                tier_desc = "বেস্ট কোয়ালিটি"
+            lbl = f"{d} DPI (এই প্রিন্টারের সর্বোচ্চ / {tier_desc}) ★"
+        elif d >= 1200:
+            lbl = f"{d} DPI (আল্ট্রা কোয়ালিটি / ফাইন)"
         elif d >= 600:
-            lbl = f"{d} DPI (হাই কোয়ালিটি / ফাইন)"
-        elif d >= 400:
-            lbl = f"{d} DPI (ফাইন কোয়ালিটি / শার্প)"
+            lbl = f"{d} DPI (হাই কোয়ালিটি / স্পষ্ট)"
         elif d >= 300:
             lbl = f"{d} DPI (স্ট্যান্ডার্ড কোয়ালিটি)"
         else:
             lbl = f"{d} DPI (ড্রাফট / দ্রুত ও সাশ্রয়ী)"
+
         options.append({
             "dpi": d,
             "label": lbl,
