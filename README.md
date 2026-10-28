@@ -111,6 +111,16 @@ print-studio/
 
 ---
 
+## 👨‍💻 Author & Credits (ডেভেলপার পরিচিতি)
+
+**Md Hasan Al Mamun**  
+- 🎓 **Department of Computer Science & Engineering**, Jahangirnagar University (JU CSE 29)
+- ✉️ **Email:** [jucse29.399@gmail.com](mailto:jucse29.399@gmail.com)
+- 🐙 **GitHub:** [@hasanjucse29](https://github.com/hasanjucse29)
+- 📦 **Repository:** [https://github.com/hasanjucse29/print-studio](https://github.com/hasanjucse29/print-studio)
+
+---
+
 ## 📄 License
 
-This project is open-source and available under the [MIT License](LICENSE).
+Copyright © 2026 **Md Hasan Al Mamun**. Released under the [MIT License](LICENSE).

@@ -72,6 +72,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const progressError = document.getElementById("progressError");
     const btnCancelPrint = document.getElementById("btnCancelPrint");
     const btnDonePrint = document.getElementById("btnDonePrint");
+    const btnOpenAbout = document.getElementById("btnOpenAbout");
+    const aboutModal = document.getElementById("aboutModal");
+    const btnCloseAbout = document.getElementById("btnCloseAbout");
+    const btnCloseAboutFooter = document.getElementById("btnCloseAboutFooter");
     const toastContainer = document.getElementById("toastContainer");
 
     // ================= Toast Helper =================
@@ -873,6 +877,43 @@ document.addEventListener("DOMContentLoaded", () => {
     btnClosePreview.addEventListener("click", closePreviewModal);
     btnClosePreviewFooter.addEventListener("click", closePreviewModal);
 
+    // ================= About Modal =================
+    function openAboutModal() {
+        if (aboutModal) aboutModal.classList.add("open");
+    }
+
+    function closeAboutModal() {
+        if (aboutModal) aboutModal.classList.remove("open");
+    }
+
+    if (btnOpenAbout) btnOpenAbout.addEventListener("click", openAboutModal);
+    if (btnCloseAbout) btnCloseAbout.addEventListener("click", closeAboutModal);
+    if (btnCloseAboutFooter) btnCloseAboutFooter.addEventListener("click", closeAboutModal);
+    if (aboutModal) {
+        aboutModal.addEventListener("click", e => {
+            if (e.target === aboutModal) closeAboutModal();
+        });
+    }
+
+    // External link handler to open links safely in default web browser
+    document.querySelectorAll(".external-open-link").forEach(link => {
+        link.addEventListener("click", async e => {
+            e.preventDefault();
+            const url = link.dataset.url || link.href;
+            if (url) {
+                try {
+                    await fetch("/api/open_url", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ url })
+                    });
+                } catch (err) {
+                    window.open(url, "_blank");
+                }
+            }
+        });
+    });
+
     // ================= One-Click Print Execution =================
     btnPrintAll.addEventListener("click", async () => {
         if (!state.selectedPrinter) {
@@ -1026,6 +1067,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Escape: Close modals
         if (e.key === "Escape") {
             closePreviewModal();
+            closeAboutModal();
             if (!progressModal.classList.contains("open") || !btnDonePrint.classList.contains("hidden")) {
                 progressModal.classList.remove("open");
             }

@@ -86,6 +86,20 @@ def get_printer_status_route():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/open_url", methods=["POST"])
+def open_url():
+    """Safely open external links in default web browser."""
+    data = request.json or {}
+    url = data.get("url", "").strip()
+    if url.startswith("http://") or url.startswith("https://") or url.startswith("mailto:"):
+        try:
+            webbrowser.open(url)
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+    return jsonify({"success": False, "error": "Invalid URL"}), 400
+
+
 @app.route("/api/upload", methods=["POST"])
 def upload_files():
     """Handle drag-and-drop or file input upload of PDF files."""
