@@ -88,31 +88,86 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 3200);
     }
 
-    // ================= Load Printers =================
+    // ================= Load Printers & Saved Settings =================
+    async function loadSavedSettings() {
+        try {
+            const res = await fetch("/api/settings");
+            const data = await res.json();
+            if (data.success && data.settings) {
+                const s = data.settings;
+                Object.assign(state.globalSettings, s);
+                
+                // Update UI elements to match loaded settings
+                if (s.color) {
+                    colorModeControl.querySelectorAll(".segment-btn").forEach(btn => {
+                        btn.classList.toggle("active", btn.dataset.color === s.color);
+                    });
+                }
+                if (s.paper && paperSizeSelect) paperSizeSelect.value = s.paper;
+                if (s.duplex && duplexSelect) duplexSelect.value = s.duplex;
+                if (s.nup && nupControl) {
+                    nupControl.querySelectorAll(".nup-btn").forEach(btn => {
+                        btn.classList.toggle("active", parseInt(btn.dataset.nup) === s.nup);
+                    });
+                }
+                if (s.orientation && orientationSelect) orientationSelect.value = s.orientation;
+                if (s.copies && copiesInput) copiesInput.value = s.copies;
+                if (s.draw_borders !== undefined && chkDrawBorders) chkDrawBorders.checked = s.draw_borders;
+                
+                return s;
+            }
+        } catch (e) {
+            console.error("Could not load saved settings:", e);
+        }
+        return null;
+    }
+
+    let saveTimeout = null;
+    function persistSettings() {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(async () => {
+            try {
+                const payload = Object.assign({}, state.globalSettings, { printer: state.selectedPrinter });
+                await fetch("/api/settings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+            } catch (e) {
+                console.error("Could not persist settings:", e);
+            }
+        }, 500);
+    }
+
     async function loadPrinters() {
         try {
             printerSelect.innerHTML = '<option value="">প্রিন্টার খোঁজা হচ্ছে...</option>';
-            const res = await fetch("/api/printers");
-            const data = await res.json();
+            const [printersRes, savedSettings] = await Promise.all([
+                fetch("/api/printers").then(r => r.json()),
+                loadSavedSettings()
+            ]);
             
-            if (data.success && data.printers.length > 0) {
-                state.printers = data.printers;
+            if (printersRes.success && printersRes.printers.length > 0) {
+                state.printers = printersRes.printers;
                 printerSelect.innerHTML = "";
                 
-                // Prefer first physical printer; if none, use default or first
                 let chosenPrinter = "";
-                const firstPhysical = data.printers.find(p => !p.is_virtual);
-                const defaultPrinter = data.printers.find(p => p.is_default);
-
-                if (firstPhysical) {
-                    chosenPrinter = firstPhysical.name;
-                } else if (defaultPrinter) {
-                    chosenPrinter = defaultPrinter.name;
+                // If saved printer exists, prefer it
+                if (savedSettings && savedSettings.printer && state.printers.some(p => p.name === savedSettings.printer)) {
+                    chosenPrinter = savedSettings.printer;
                 } else {
-                    chosenPrinter = data.printers[0].name;
+                    const firstPhysical = state.printers.find(p => !p.is_virtual);
+                    const defaultPrinter = state.printers.find(p => p.is_default);
+                    if (firstPhysical) {
+                        chosenPrinter = firstPhysical.name;
+                    } else if (defaultPrinter) {
+                        chosenPrinter = defaultPrinter.name;
+                    } else {
+                        chosenPrinter = state.printers[0].name;
+                    }
                 }
 
-                data.printers.forEach(p => {
+                state.printers.forEach(p => {
                     const opt = document.createElement("option");
                     opt.value = p.name;
                     const icon = p.is_virtual ? "📄" : "🖨️";
@@ -636,6 +691,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const duplexNote = state.globalSettings.duplex !== "simplex" ? " (ডুপ্লেক্স)" : "";
             summarySheets.textContent = `${physicalSheets} টি কাগজ${duplexNote}`;
         }
+        
+        persistSettings();
     }
 
     // ================= Sheet Preview Modal =================

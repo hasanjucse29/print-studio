@@ -1,16 +1,27 @@
 import os
+import sys
 import uuid
+import tempfile
 import threading
 import time
 import webbrowser
 import traceback
 from flask import Flask, render_template, request, jsonify, send_file, Response
 import print_engine
+import settings_manager
 
-app = Flask(__name__)
+# PyInstaller bundle support
+if getattr(sys, "frozen", False):
+    BUNDLE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    TEMPLATE_DIR = os.path.join(BUNDLE_DIR, "templates")
+    STATIC_DIR = os.path.join(BUNDLE_DIR, "static")
+    app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    app = Flask(__name__)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+# Temporary upload workspace in system temp to keep USB / portable directory pristine
+UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "PrintStudio_Uploads")
 THUMB_DIR = os.path.join(UPLOAD_DIR, "thumbs")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(THUMB_DIR, exist_ok=True)
@@ -35,6 +46,16 @@ def format_size(bytes_num: int) -> str:
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/api/settings", methods=["GET", "POST"])
+def handle_settings():
+    """Get or save user configuration settings for true portability."""
+    if request.method == "POST":
+        data = request.json or {}
+        settings_manager.save_settings(data)
+        return jsonify({"success": True, "settings": settings_manager.load_settings()})
+    return jsonify({"success": True, "settings": settings_manager.load_settings()})
 
 
 @app.route("/api/printers", methods=["GET"])
@@ -286,6 +307,14 @@ def start_print():
             "copies": 1,
             "draw_borders": True
         })
+
+        # Persist user choices into config.json
+        try:
+            persisted = global_settings.copy()
+            persisted["printer"] = printer_name
+            settings_manager.save_settings(persisted)
+        except Exception:
+            pass
 
         jobs_data = []
         for item in file_queue:

@@ -16,6 +16,10 @@ venv/
 .venv/
 ENV/
 
+# PyInstaller build artifacts
+build/
+dist/
+
 # IDE & Editor files
 .vscode/
 .idea/

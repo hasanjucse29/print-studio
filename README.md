@@ -69,10 +69,16 @@ pip install -r requirements.txt
 
 ### 3. Launching the App (চালু করার পদ্ধতি)
 
-- **Option A (Standard Launcher):**  
-  Double-click **`Run_Print_Studio.bat`**. This launches the local server and automatically opens the browser interface.
-- **Option B (Quiet Background Launcher):**  
-  Double-click **`Start_Print_Studio_Quiet.vbs`**. Runs silently in the background without keeping a command prompt window open.
+- **Option A (Standalone Portable Window):**  
+  Run **`dist/PrintStudio.exe`**. Launches in its own dedicated, native desktop window (no browser tabs, no terminal). Completely portable on any USB drive.
+- **Option B (Standard Web Launcher):**  
+  Double-click **`Run_Print_Studio.bat`**. This launches the local server and opens your default browser.
+- **Option C (Quiet Background Launcher):**  
+  Double-click **`Start_Print_Studio_Quiet.vbs`**. Runs silently in the background.
+
+### 4. Compiling New Portable .exe (পোর্টেবল বিল্ড করার পদ্ধতি)
+To rebuild `PrintStudio.exe` at any time:
+- Double-click **`build_portable.bat`**. The resulting standalone binary will be created in `dist/PrintStudio.exe`.
 
 ---
 
