@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using PrintStudio.Models;
 using PrintStudio.Services;
@@ -20,13 +21,31 @@ namespace PrintStudio
         private PrinterDeviceInfo? _selectedPrinter;
         private int _selectedNup = 1;
         private bool _isInitialized = false;
+        private readonly DispatcherTimer _queueAutoRefreshTimer;
 
         public MainWindow()
         {
             InitializeComponent();
             _isInitialized = true;
             FileList.ItemsSource = Queue;
+            CopiesText.TextChanged += (s, e) => { if (_isInitialized) UpdateSummary(); };
+
+            // Setup auto-refresh timer for Live Print Queue
+            _queueAutoRefreshTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(3)
+            };
+            _queueAutoRefreshTimer.Tick += async (s, e) =>
+            {
+                if (QueueView.Visibility == Visibility.Visible && _selectedPrinter != null)
+                {
+                    await LoadPrintJobsAsync(isBackgroundPoll: true);
+                }
+            };
+            _queueAutoRefreshTimer.Start();
+
             Loaded += MainWindow_Loaded;
+            Closing += (s, e) => _queueAutoRefreshTimer.Stop();
         }
 
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -43,7 +62,6 @@ namespace PrintStudio
             PrinterCombo.ItemsSource = printers;
             if (printers.Count > 0)
             {
-                // Prefer default or first online
                 var preferred = printers.FirstOrDefault(p => !p.IsOffline && p.IsDefault)
                              ?? printers.FirstOrDefault(p => !p.IsOffline)
                              ?? printers[0];
@@ -66,7 +84,7 @@ namespace PrintStudio
                 }
                 else if (printer.IsBusy)
                 {
-                    StatusDot.Fill = new SolidColorBrush(Color.FromRgb(245, 158, 11)); // Yellow
+                    StatusDot.Fill = new SolidColorBrush(Color.FromRgb(245, 158, 11)); // Amber
                     ActivePrinterStatusTag.Foreground = new SolidColorBrush(Color.FromRgb(217, 119, 6));
                 }
                 else
@@ -80,11 +98,47 @@ namespace PrintStudio
                 var maxOpt = printer.QualityOptions.FirstOrDefault(q => q.IsDefault) ?? printer.QualityOptions.FirstOrDefault();
                 QualityCombo.SelectedItem = maxOpt;
 
+                UpdateHardwareAlert(printer);
                 UpdateSummary();
+
+                if (QueueView.Visibility == Visibility.Visible)
+                {
+                    _ = LoadPrintJobsAsync();
+                }
             }
         }
 
-        private void SettingChanged(object sender, SelectionChangedEventArgs e)
+        private void UpdateHardwareAlert(PrinterDeviceInfo printer)
+        {
+            if (HardwareAlertBanner == null) return;
+
+            var alert = printer.HardwareAlert;
+            if (alert.HasAlert)
+            {
+                HardwareAlertBanner.Visibility = Visibility.Visible;
+                if (AlertIconText != null) AlertIconText.Text = alert.Icon;
+                if (AlertMessageText != null) AlertMessageText.Text = alert.Message;
+
+                if (alert.Severity == "danger")
+                {
+                    HardwareAlertBanner.Background = new SolidColorBrush(Color.FromRgb(254, 242, 242));
+                    HardwareAlertBanner.BorderBrush = new SolidColorBrush(Color.FromRgb(254, 202, 202));
+                    if (AlertMessageText != null) AlertMessageText.Foreground = new SolidColorBrush(Color.FromRgb(185, 28, 28));
+                }
+                else
+                {
+                    HardwareAlertBanner.Background = new SolidColorBrush(Color.FromRgb(254, 249, 195));
+                    HardwareAlertBanner.BorderBrush = new SolidColorBrush(Color.FromRgb(253, 224, 71));
+                    if (AlertMessageText != null) AlertMessageText.Foreground = new SolidColorBrush(Color.FromRgb(161, 98, 7));
+                }
+            }
+            else
+            {
+                HardwareAlertBanner.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void SettingChanged(object sender, RoutedEventArgs e)
         {
             if (_isInitialized)
             {
@@ -161,7 +215,8 @@ namespace PrintStudio
             foreach (var item in Queue)
             {
                 var pList = NativePrintEngine.ParsePageRange(item.PageRange, item.PageCount);
-                int sheets = (int)Math.Ceiling((double)pList.Count / nup) * copies;
+                int itemCopies = item.UseCustomSettings ? Math.Max(1, item.Copies) : copies;
+                int sheets = (int)Math.Ceiling((double)pList.Count / nup) * itemCopies;
                 totalSheets += sheets;
             }
 
@@ -258,14 +313,17 @@ namespace PrintStudio
                     bmp.EndInit();
                     bmp.Freeze();
 
-                    Queue.Add(new PrintItem
+                    var item = new PrintItem
                     {
                         FilePath = p,
                         PageCount = info.PageCount,
                         FileSizeFormatted = sizeStr,
                         DetectedOrientation = info.IsPortrait ? "portrait" : "landscape",
                         Thumbnail = bmp
-                    });
+                    };
+                    item.PropertyChanged += (s, e) => { if (_isInitialized) UpdateSummary(); };
+
+                    Queue.Add(item);
                 }
                 catch { }
             }
@@ -291,6 +349,10 @@ namespace PrintStudio
         private async void BtnRefresh_Click(object sender, RoutedEventArgs e)
         {
             await RefreshPrintersAsync();
+            if (QueueView.Visibility == Visibility.Visible)
+            {
+                await LoadPrintJobsAsync();
+            }
         }
 
         private void BtnAbout_Click(object sender, RoutedEventArgs e)
@@ -299,6 +361,157 @@ namespace PrintStudio
             about.ShowDialog();
         }
 
+        // ==========================================
+        // TOP NAVIGATION TABS
+        // ==========================================
+        private void TabWorkspace_Click(object sender, RoutedEventArgs e)
+        {
+            WorkspaceView.Visibility = Visibility.Visible;
+            QueueView.Visibility = Visibility.Collapsed;
+
+            TabWorkspaceBtn.Background = new SolidColorBrush(Color.FromRgb(37, 99, 235));
+            TabWorkspaceBtn.Foreground = Brushes.White;
+
+            TabQueueBtn.Background = Brushes.Transparent;
+            TabQueueBtn.Foreground = new SolidColorBrush(Color.FromRgb(71, 85, 105));
+        }
+
+        private async void TabQueue_Click(object sender, RoutedEventArgs e)
+        {
+            WorkspaceView.Visibility = Visibility.Collapsed;
+            QueueView.Visibility = Visibility.Visible;
+
+            TabQueueBtn.Background = new SolidColorBrush(Color.FromRgb(37, 99, 235));
+            TabQueueBtn.Foreground = Brushes.White;
+
+            TabWorkspaceBtn.Background = Brushes.Transparent;
+            TabWorkspaceBtn.Foreground = new SolidColorBrush(Color.FromRgb(71, 85, 105));
+
+            await LoadPrintJobsAsync();
+        }
+
+        // ==========================================
+        // LIVE PRINT QUEUE ACTIONS
+        // ==========================================
+        private async Task LoadPrintJobsAsync(bool isBackgroundPoll = false)
+        {
+            if (_selectedPrinter == null)
+            {
+                if (!isBackgroundPoll)
+                {
+                    QueuePrinterTitle.Text = "কোনো প্রিন্টার নির্বাচিত নেই";
+                    PrintJobsGrid.ItemsSource = null;
+                    QueueCountSummaryText.Text = "মোট ০টি জব লাইনে আছে";
+                }
+                return;
+            }
+
+            QueuePrinterTitle.Text = $"{_selectedPrinter.Name} ({_selectedPrinter.StatusLabel})";
+
+            try
+            {
+                var jobs = await Task.Run(() => PrinterService.GetPrintJobs(_selectedPrinter.Name));
+                PrintJobsGrid.ItemsSource = jobs;
+                QueueCountSummaryText.Text = $"মোট {jobs.Count}টি জব লাইনে আছে";
+            }
+            catch (Exception ex)
+            {
+                if (!isBackgroundPoll)
+                {
+                    QueueCountSummaryText.Text = $"কিউ লোড করা যায়নি: {ex.Message}";
+                }
+            }
+        }
+
+        private async void BtnRefreshQueueTab_Click(object sender, RoutedEventArgs e)
+        {
+            await LoadPrintJobsAsync();
+        }
+
+        private void BtnOpenWindowsQueue_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedPrinter == null) return;
+
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "rundll32.exe",
+                    Arguments = $"printui.dll,PrintUIEntry /o /n \"{_selectedPrinter.Name}\"",
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"উইন্ডোজ কিউ উইন্ডো খুলতে সমস্যা হয়েছে:\n{ex.Message}", "ত্রুটি", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private async void BtnPauseJob_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is int jobId && _selectedPrinter != null)
+            {
+                bool ok = await Task.Run(() => PrinterService.PauseJob(_selectedPrinter.Name, jobId));
+                if (!ok)
+                {
+                    // If pausing didn't work, maybe it was already paused, try resume
+                    await Task.Run(() => PrinterService.ResumeJob(_selectedPrinter.Name, jobId));
+                }
+                await LoadPrintJobsAsync();
+            }
+        }
+
+        private async void BtnCancelJob_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is int jobId && _selectedPrinter != null)
+            {
+                var res = MessageBox.Show($"আপনি কি নিশ্চিত যে জব #{jobId} বাতিল করতে চান?", "প্রিন্ট জব বাতিল", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (res == MessageBoxResult.Yes)
+                {
+                    await Task.Run(() => PrinterService.CancelJob(_selectedPrinter.Name, jobId));
+                    await Task.Delay(400); // Give spooler time to update state
+                    await LoadPrintJobsAsync();
+                }
+            }
+        }
+
+        // ==========================================
+        // COMPOSITE SHEET PREVIEW
+        // ==========================================
+        private void BtnPreview_Click(object sender, RoutedEventArgs e)
+        {
+            if (Queue.Count == 0)
+            {
+                MessageBox.Show("প্রিভিউ দেখতে প্রথমে অন্তত একটি পিডিএফ ফাইল যোগ করুন।", "Print Studio", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Pick currently selected item in listbox or first item in queue
+            var targetItem = FileList.SelectedItem as PrintItem ?? Queue[0];
+
+            var opts = new PrintEngineOptions
+            {
+                PrinterName = _selectedPrinter?.Name ?? "",
+                ColorMode = (ColorCombo?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "bw",
+                PaperSize = (PaperCombo?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "A4",
+                Duplex = (DuplexCombo?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "simplex",
+                Nup = _selectedNup,
+                DrawBorders = ChkDrawBorders?.IsChecked ?? true,
+                Orientation = (OrientCombo?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "auto",
+                Copies = (CopiesText != null && int.TryParse(CopiesText.Text, out int cp)) ? cp : 1,
+                Dpi = (QualityCombo?.SelectedItem as QualityOption)?.Dpi ?? 600
+            };
+
+            var previewWin = new PreviewWindow(targetItem, opts)
+            {
+                Owner = this
+            };
+            previewWin.ShowDialog();
+        }
+
+        // ==========================================
+        // BATCH PRINT EXECUTION
+        // ==========================================
         private async void BtnPrintAll_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedPrinter == null)
@@ -323,6 +536,7 @@ namespace PrintStudio
                 PaperSize = (PaperCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "A4",
                 Duplex = (DuplexCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "simplex",
                 Nup = _selectedNup,
+                DrawBorders = ChkDrawBorders?.IsChecked ?? true,
                 Orientation = (OrientCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "auto",
                 Copies = int.TryParse(CopiesText.Text, out int cp) ? cp : 1,
                 Dpi = (QualityCombo.SelectedItem as QualityOption)?.Dpi ?? 600

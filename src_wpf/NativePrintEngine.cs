@@ -5,7 +5,6 @@ using System.Printing;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using PrintStudio.Models;
@@ -46,29 +45,23 @@ namespace PrintStudio.Services
                     queue = server.DefaultPrintQueue;
                 }
 
-                var ticket = queue.DefaultPrintTicket.Clone();
+                var baseTicket = queue.DefaultPrintTicket.Clone();
 
-                // 1. Color mode
-                ticket.OutputColor = options.ColorMode == "color" ? OutputColor.Color : OutputColor.Monochrome;
-
-                // 2. Duplex
+                // Duplex
                 if (options.Duplex == "vertical")
-                    ticket.Duplexing = Duplexing.TwoSidedLongEdge;
+                    baseTicket.Duplexing = Duplexing.TwoSidedLongEdge;
                 else if (options.Duplex == "horizontal")
-                    ticket.Duplexing = Duplexing.TwoSidedShortEdge;
+                    baseTicket.Duplexing = Duplexing.TwoSidedShortEdge;
                 else
-                    ticket.Duplexing = Duplexing.OneSided;
+                    baseTicket.Duplexing = Duplexing.OneSided;
 
-                // 3. Page media size
+                // Paper size
                 if (options.PaperSize == "Letter")
-                    ticket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLetter);
+                    baseTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLetter);
                 else if (options.PaperSize == "Legal")
-                    ticket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLegal);
+                    baseTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLegal);
                 else
-                    ticket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
-
-                // 4. Copies
-                ticket.CopyCount = Math.Max(1, options.Copies);
+                    baseTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
 
                 // Process each document
                 for (int itemIdx = 0; itemIdx < items.Count; itemIdx++)
@@ -77,17 +70,31 @@ namespace PrintStudio.Services
                     var item = items[itemIdx];
                     onProgress(itemIdx + 1, items.Count, item.FileName);
 
-                    var pagesToPrint = ParsePageRange(item.PageRange, item.PageCount);
+                    // Granular per-file overrides
+                    string effectiveColor = item.UseCustomSettings && item.CustomColor != "default"
+                        ? item.CustomColor
+                        : options.ColorMode;
+
+                    string effectiveOrient = item.UseCustomSettings && item.CustomOrientation != "default"
+                        ? item.CustomOrientation
+                        : options.Orientation;
+
+                    int effectiveCopies = item.UseCustomSettings ? item.Copies : options.Copies;
                     int nup = options.Nup;
 
-                    var docTicket = ticket.Clone();
-                    bool docLandscape = options.Orientation == "landscape" || (options.Orientation == "auto" && item.DetectedOrientation == "landscape");
+                    var docTicket = baseTicket.Clone();
+                    docTicket.OutputColor = effectiveColor == "color" ? OutputColor.Color : OutputColor.Monochrome;
+                    docTicket.CopyCount = Math.Max(1, effectiveCopies);
+
+                    var pagesToPrint = ParsePageRange(item.PageRange, item.PageCount);
+
+                    bool docLandscape = effectiveOrient == "landscape" || (effectiveOrient == "auto" && item.DetectedOrientation == "landscape");
                     if (nup == 2) docLandscape = !docLandscape; // 2-up flips best
                     else if (nup == 6) docLandscape = true;
 
                     docTicket.PageOrientation = docLandscape ? PageOrientation.Landscape : PageOrientation.Portrait;
 
-                    var printDialog = new PrintDialog();
+                    var printDialog = new System.Windows.Controls.PrintDialog();
                     printDialog.PrintQueue = queue;
                     printDialog.PrintTicket = docTicket;
 
@@ -95,7 +102,6 @@ namespace PrintStudio.Services
                     double sheetW = docLandscape ? 1122 : 793;
                     double sheetH = docLandscape ? 793 : 1122;
 
-                    // Group pages into N-up chunks
                     for (int i = 0; i < pagesToPrint.Count; i += nup)
                     {
                         if (ct.IsCancellationRequested) break;
@@ -116,12 +122,61 @@ namespace PrintStudio.Services
                             renderedImages.Add(bmp);
                         }
 
-                        // Compose N-up visually using WPF Visual/DrawingContext
-                        var visual = ComposeSheetVisual(renderedImages, sheetW, sheetH, nup, options.DrawBorders, options.ColorMode == "bw");
+                        var visual = ComposeSheetVisual(renderedImages, sheetW, sheetH, nup, options.DrawBorders, effectiveColor == "bw");
                         printDialog.PrintVisual(visual, $"Print Studio - {item.FileName} (Sheet {i / nup + 1})");
                     }
                 }
             }, ct);
+        }
+
+        public static async Task<BitmapSource> RenderPreviewSheetAsync(
+            PrintItem item,
+            int sheetIndex,
+            PrintEngineOptions options)
+        {
+            string effectiveColor = item.UseCustomSettings && item.CustomColor != "default"
+                ? item.CustomColor
+                : options.ColorMode;
+
+            string effectiveOrient = item.UseCustomSettings && item.CustomOrientation != "default"
+                ? item.CustomOrientation
+                : options.Orientation;
+
+            int nup = options.Nup;
+            var pagesToPrint = ParsePageRange(item.PageRange, item.PageCount);
+            int startPageIdx = sheetIndex * nup;
+
+            if (startPageIdx >= pagesToPrint.Count) startPageIdx = 0;
+            int take = Math.Min(nup, pagesToPrint.Count - startPageIdx);
+            var chunkIndices = pagesToPrint.GetRange(startPageIdx, take);
+
+            bool docLandscape = effectiveOrient == "landscape" || (effectiveOrient == "auto" && item.DetectedOrientation == "landscape");
+            if (nup == 2) docLandscape = !docLandscape;
+            else if (nup == 6) docLandscape = true;
+
+            double sheetW = docLandscape ? 1122 : 793;
+            double sheetH = docLandscape ? 793 : 1122;
+
+            var renderedImages = new List<BitmapSource>();
+            foreach (uint pageIdx in chunkIndices)
+            {
+                byte[] pngBytes = await WindowsPdfRenderer.RenderPageToPngBytesAsync(item.FilePath, pageIdx, 800, 1100);
+                using var ms = new MemoryStream(pngBytes);
+                var bmp = new BitmapImage();
+                bmp.BeginInit();
+                bmp.CacheOption = BitmapCacheOption.OnLoad;
+                bmp.StreamSource = ms;
+                bmp.EndInit();
+                bmp.Freeze();
+                renderedImages.Add(bmp);
+            }
+
+            var visual = ComposeSheetVisual(renderedImages, sheetW, sheetH, nup, options.DrawBorders, effectiveColor == "bw");
+
+            var rtb = new RenderTargetBitmap((int)sheetW, (int)sheetH, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(visual);
+            rtb.Freeze();
+            return rtb;
         }
 
         private static Visual ComposeSheetVisual(List<BitmapSource> images, double width, double height, int nup, bool drawBorders, bool isGrayscale)
@@ -129,7 +184,7 @@ namespace PrintStudio.Services
             var dv = new DrawingVisual();
             using (var dc = dv.RenderOpen())
             {
-                // Background
+                // Clean Sheet Background
                 dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, width, height));
 
                 int cols = 1, rows = 1;
@@ -145,7 +200,7 @@ namespace PrintStudio.Services
                 double availW = cellW - (padX * 2);
                 double availH = cellH - (padY * 2);
 
-                var borderPen = new Pen(new SolidColorBrush(Color.FromRgb(200, 205, 215)), 1.0);
+                var borderPen = new Pen(new SolidColorBrush(Color.FromRgb(203, 213, 225)), 1.2);
 
                 for (int idx = 0; idx < images.Count; idx++)
                 {

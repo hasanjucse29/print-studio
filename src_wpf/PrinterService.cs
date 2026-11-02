@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing.Printing;
 using System.Printing;
 using System.Runtime.InteropServices;
 using PrintStudio.Models;
@@ -29,12 +28,17 @@ namespace PrintStudio.Services
                 {
                     try
                     {
+                        q.Refresh();
                         var info = new PrinterDeviceInfo
                         {
                             Name = q.Name,
                             IsDefault = (q.Name == defaultPrinterName),
                             IsOffline = q.IsOffline,
                             IsBusy = q.IsBusy,
+                            IsOutOfPaper = q.IsOutOfPaper || q.QueueStatus.HasFlag(PrintQueueStatus.PaperOut),
+                            IsPaperJammed = q.IsPaperJammed || q.QueueStatus.HasFlag(PrintQueueStatus.PaperJam),
+                            IsDoorOpened = q.IsDoorOpened || q.QueueStatus.HasFlag(PrintQueueStatus.DoorOpen),
+                            IsTonerLow = q.IsTonerLow || q.QueueStatus.HasFlag(PrintQueueStatus.TonerLow),
                             QueueCount = q.NumberOfJobs
                         };
 
@@ -56,7 +60,7 @@ namespace PrintStudio.Services
             }
             catch
             {
-                // In case PrintServer is restricted, gracefully return whatever was populated
+                // Fallback gracefully
             }
 
             // Sort: Online printers first, then default
@@ -68,6 +72,104 @@ namespace PrintStudio.Services
             });
 
             return list;
+        }
+
+        public static List<PrintJobItem> GetPrintJobs(string printerName)
+        {
+            var jobsList = new List<PrintJobItem>();
+            if (string.IsNullOrWhiteSpace(printerName)) return jobsList;
+
+            try
+            {
+                using var server = new LocalPrintServer();
+                using var queue = server.GetPrintQueue(printerName);
+                queue.Refresh();
+                var jobCollection = queue.GetPrintJobInfoCollection();
+
+                foreach (PrintSystemJobInfo job in jobCollection)
+                {
+                    try
+                    {
+                        job.Refresh();
+                        string status = "লাইনে অপেক্ষা করছে";
+                        if (job.JobStatus.HasFlag(PrintJobStatus.Printing)) status = "প্রিন্ট হচ্ছে...";
+                        else if (job.JobStatus.HasFlag(PrintJobStatus.Spooling)) status = "স্পুল হচ্ছে...";
+                        else if (job.JobStatus.HasFlag(PrintJobStatus.Paused)) status = "পজ করা আছে";
+                        else if (job.JobStatus.HasFlag(PrintJobStatus.Error) || job.JobStatus.HasFlag(PrintJobStatus.UserIntervention)) status = "ত্রুটি / ইউজার ইন্টারভেনশন";
+                        else if (job.JobStatus.HasFlag(PrintJobStatus.Completed)) status = "সম্পন্ন";
+
+                        string progress = job.NumberOfPages > 0
+                            ? $"{job.NumberOfPagesPrinted} / {job.NumberOfPages} পেজ"
+                            : "প্রস্তুত হচ্ছে";
+
+                        jobsList.Add(new PrintJobItem
+                        {
+                            JobId = job.JobIdentifier,
+                            DocumentName = string.IsNullOrWhiteSpace(job.Name) ? "অজ্ঞাত ডকুমেন্ট" : job.Name,
+                            Status = status,
+                            PagesProgress = progress,
+                            TimeSubmitted = job.TimeJobSubmitted.ToLocalTime().ToString("hh:mm:ss tt"),
+                            IsPaused = job.JobStatus.HasFlag(PrintJobStatus.Paused),
+                            CanCancel = true
+                        });
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
+            return jobsList;
+        }
+
+        public static bool CancelJob(string printerName, int jobId)
+        {
+            try
+            {
+                using var server = new LocalPrintServer();
+                using var queue = server.GetPrintQueue(printerName);
+                queue.Refresh();
+                var job = queue.GetJob(jobId);
+                job?.Cancel();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static bool PauseJob(string printerName, int jobId)
+        {
+            try
+            {
+                using var server = new LocalPrintServer();
+                using var queue = server.GetPrintQueue(printerName);
+                queue.Refresh();
+                var job = queue.GetJob(jobId);
+                job?.Pause();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static bool ResumeJob(string printerName, int jobId)
+        {
+            try
+            {
+                using var server = new LocalPrintServer();
+                using var queue = server.GetPrintQueue(printerName);
+                queue.Refresh();
+                var job = queue.GetJob(jobId);
+                job?.Resume();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static List<int> GetHardwareResolutions(string printerName)

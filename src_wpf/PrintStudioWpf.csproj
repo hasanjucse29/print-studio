@@ -9,6 +9,12 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>PrintStudio</AssemblyName>
     <RootNamespace>PrintStudio</RootNamespace>
+    <ApplicationIcon>app_icon.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="app_icon.png" />
+    <Resource Include="app_icon.ico" />
+  </ItemGroup>
 
 </Project>
