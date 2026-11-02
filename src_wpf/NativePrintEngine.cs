@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Xps;
 using PrintStudio.Models;
 
 namespace PrintStudio.Services
@@ -45,23 +46,24 @@ namespace PrintStudio.Services
                     queue = server.DefaultPrintQueue;
                 }
 
-                var baseTicket = queue.DefaultPrintTicket.Clone();
-
-                // Duplex
-                if (options.Duplex == "vertical")
-                    baseTicket.Duplexing = Duplexing.TwoSidedLongEdge;
-                else if (options.Duplex == "horizontal")
-                    baseTicket.Duplexing = Duplexing.TwoSidedShortEdge;
-                else
-                    baseTicket.Duplexing = Duplexing.OneSided;
-
-                // Paper size
-                if (options.PaperSize == "Letter")
-                    baseTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLetter);
-                else if (options.PaperSize == "Legal")
-                    baseTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLegal);
-                else
-                    baseTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
+                // Safely obtain base PrintTicket without crashing on buggy printer drivers
+                PrintTicket? baseTicket = null;
+                try
+                {
+                    baseTicket = queue.UserPrintTicket?.Clone() ?? queue.DefaultPrintTicket?.Clone();
+                }
+                catch
+                {
+                    // Fall back to clean in-memory ticket if driver fails DEVMODE-to-PrintTicket conversion
+                    try
+                    {
+                        baseTicket = new PrintTicket();
+                    }
+                    catch
+                    {
+                        baseTicket = null;
+                    }
+                }
 
                 // Process each document
                 for (int itemIdx = 0; itemIdx < items.Count; itemIdx++)
@@ -82,21 +84,46 @@ namespace PrintStudio.Services
                     int effectiveCopies = item.UseCustomSettings ? item.Copies : options.Copies;
                     int nup = options.Nup;
 
-                    var docTicket = baseTicket.Clone();
-                    docTicket.OutputColor = effectiveColor == "color" ? OutputColor.Color : OutputColor.Monochrome;
-                    docTicket.CopyCount = Math.Max(1, effectiveCopies);
-
                     var pagesToPrint = ParsePageRange(item.PageRange, item.PageCount);
 
                     bool docLandscape = effectiveOrient == "landscape" || (effectiveOrient == "auto" && item.DetectedOrientation == "landscape");
                     if (nup == 2) docLandscape = !docLandscape; // 2-up flips best
                     else if (nup == 6) docLandscape = true;
 
-                    docTicket.PageOrientation = docLandscape ? PageOrientation.Landscape : PageOrientation.Portrait;
+                    // Configure doc ticket safely
+                    PrintTicket? docTicket = null;
+                    if (baseTicket != null)
+                    {
+                        try
+                        {
+                            docTicket = baseTicket.Clone();
+                            try { docTicket.OutputColor = effectiveColor == "color" ? OutputColor.Color : OutputColor.Monochrome; } catch { }
+                            try { docTicket.CopyCount = Math.Max(1, effectiveCopies); } catch { }
+                            try { docTicket.PageOrientation = docLandscape ? PageOrientation.Landscape : PageOrientation.Portrait; } catch { }
 
-                    var printDialog = new System.Windows.Controls.PrintDialog();
-                    printDialog.PrintQueue = queue;
-                    printDialog.PrintTicket = docTicket;
+                            // Duplex
+                            try
+                            {
+                                if (options.Duplex == "vertical") docTicket.Duplexing = Duplexing.TwoSidedLongEdge;
+                                else if (options.Duplex == "horizontal") docTicket.Duplexing = Duplexing.TwoSidedShortEdge;
+                                else docTicket.Duplexing = Duplexing.OneSided;
+                            }
+                            catch { }
+
+                            // Paper size
+                            try
+                            {
+                                if (options.PaperSize == "Letter") docTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLetter);
+                                else if (options.PaperSize == "Legal") docTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLegal);
+                                else docTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
+                            }
+                            catch { }
+                        }
+                        catch
+                        {
+                            docTicket = null;
+                        }
+                    }
 
                     // Standard sheet dimensions in 96 DPI units
                     double sheetW = docLandscape ? 1122 : 793;
@@ -123,10 +150,54 @@ namespace PrintStudio.Services
                         }
 
                         var visual = ComposeSheetVisual(renderedImages, sheetW, sheetH, nup, options.DrawBorders, effectiveColor == "bw");
-                        printDialog.PrintVisual(visual, $"Print Studio - {item.FileName} (Sheet {i / nup + 1})");
+
+                        // Print sheet with multi-layer fallback
+                        PrintSheetSafe(queue, visual, docTicket, $"Print Studio - {item.FileName} (Sheet {i / nup + 1})");
                     }
                 }
             }, ct);
+        }
+
+        private static void PrintSheetSafe(PrintQueue queue, Visual visual, PrintTicket? docTicket, string description)
+        {
+            // Layer 1: XpsDocumentWriter with customized PrintTicket
+            if (docTicket != null)
+            {
+                try
+                {
+                    var xpsWriter = PrintQueue.CreateXpsDocumentWriter(queue);
+                    xpsWriter.Write(visual, docTicket);
+                    return;
+                }
+                catch
+                {
+                    // Fall through to Layer 2 if driver failed DEVMODE conversion
+                }
+            }
+
+            // Layer 2: XpsDocumentWriter with driver native default (bypasses XML PrintTicket conversion)
+            try
+            {
+                var xpsWriter = PrintQueue.CreateXpsDocumentWriter(queue);
+                xpsWriter.Write(visual);
+                return;
+            }
+            catch
+            {
+                // Fall through to Layer 3
+            }
+
+            // Layer 3: PrintDialog.PrintVisual fallback
+            try
+            {
+                var printDialog = new System.Windows.Controls.PrintDialog();
+                printDialog.PrintQueue = queue;
+                printDialog.PrintVisual(visual, description);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"প্রিন্টারে ডেটা পাঠানো যায়নি ({queue.Name}): {ex.Message}", ex);
+            }
         }
 
         public static async Task<BitmapSource> RenderPreviewSheetAsync(
@@ -200,90 +271,104 @@ namespace PrintStudio.Services
                 double availW = cellW - (padX * 2);
                 double availH = cellH - (padY * 2);
 
-                var borderPen = new Pen(new SolidColorBrush(Color.FromRgb(203, 213, 225)), 1.2);
+                var borderPen = new Pen(new SolidColorBrush(Color.FromRgb(203, 213, 225)), 1.0);
+                borderPen.Freeze();
 
-                for (int idx = 0; idx < images.Count; idx++)
+                for (int i = 0; i < images.Count; i++)
                 {
-                    if (idx >= cols * rows) break;
-                    int col = idx % cols;
-                    int row = idx / cols;
+                    int r = i / cols;
+                    int c = i % cols;
+                    double x0 = c * cellW + padX;
+                    double y0 = r * cellH + padY;
 
-                    double x0 = col * cellW + padX;
-                    double y0 = row * cellH + padY;
+                    var img = images[i];
+                    double imgW = img.PixelWidth;
+                    double imgH = img.PixelHeight;
 
-                    var img = images[idx];
-                    double scale = Math.Min(availW / img.PixelWidth, availH / img.PixelHeight);
-                    double drawW = img.PixelWidth * scale;
-                    double drawH = img.PixelHeight * scale;
-
-                    double pasteX = x0 + (availW - drawW) / 2.0;
-                    double pasteY = y0 + (availH - drawH) / 2.0;
+                    // Fit proportionally
+                    double scale = Math.Min(availW / imgW, availH / imgH);
+                    double drawW = imgW * scale;
+                    double drawH = imgH * scale;
+                    double drawX = x0 + (availW - drawW) / 2.0;
+                    double drawY = y0 + (availH - drawH) / 2.0;
 
                     BitmapSource finalImg = img;
                     if (isGrayscale && img.Format != PixelFormats.Gray8)
                     {
-                        finalImg = new FormatConvertedBitmap(img, PixelFormats.Gray8, null, 0);
+                        var grayBmp = new FormatConvertedBitmap();
+                        grayBmp.BeginInit();
+                        grayBmp.Source = img;
+                        grayBmp.DestinationFormat = PixelFormats.Gray8;
+                        grayBmp.EndInit();
+                        grayBmp.Freeze();
+                        finalImg = grayBmp;
                     }
 
-                    var rect = new Rect(pasteX, pasteY, drawW, drawH);
-                    dc.DrawImage(finalImg, rect);
+                    dc.DrawImage(finalImg, new Rect(drawX, drawY, drawW, drawH));
 
-                    if (drawBorders && nup > 1)
+                    if (drawBorders)
                     {
-                        dc.DrawRectangle(null, borderPen, rect);
+                        dc.DrawRectangle(null, borderPen, new Rect(drawX, drawY, drawW, drawH));
                     }
                 }
             }
             return dv;
         }
 
-        public static List<int> ParsePageRange(string rangeStr, int totalPages)
+        public static List<uint> ParsePageRange(string rangeStr, int maxPages)
         {
-            var result = new List<int>();
-            if (string.IsNullOrWhiteSpace(rangeStr) || rangeStr.Trim().ToLower() == "all")
+            var result = new List<uint>();
+            if (string.IsNullOrWhiteSpace(rangeStr) || rangeStr.Trim().Equals("all", StringComparison.OrdinalIgnoreCase))
             {
-                for (int i = 0; i < totalPages; i++) result.Add(i);
+                for (uint i = 0; i < maxPages; i++) result.Add(i);
                 return result;
             }
 
-            string clean = rangeStr.Trim().ToLower();
+            string clean = rangeStr.Trim().ToLowerInvariant();
             if (clean == "odd")
             {
-                for (int i = 0; i < totalPages; i++) if ((i + 1) % 2 != 0) result.Add(i);
+                for (uint i = 0; i < maxPages; i++) if ((i + 1) % 2 != 0) result.Add(i);
                 return result;
             }
             if (clean == "even")
             {
-                for (int i = 0; i < totalPages; i++) if ((i + 1) % 2 == 0) result.Add(i);
+                for (uint i = 0; i < maxPages; i++) if ((i + 1) % 2 == 0) result.Add(i);
                 return result;
             }
 
-            var parts = clean.Split(',');
-            foreach (var p in parts)
+            var parts = clean.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            var pageSet = new HashSet<uint>();
+
+            foreach (var part in parts)
             {
-                string s = p.Trim();
-                if (s.Contains('-'))
+                var p = part.Trim();
+                if (p.Contains('-'))
                 {
-                    var seg = s.Split('-');
-                    if (seg.Length == 2 && int.TryParse(seg[0], out int start) && int.TryParse(seg[1], out int end))
+                    var segs = p.Split('-');
+                    if (segs.Length == 2 && uint.TryParse(segs[0].Trim(), out uint start) && uint.TryParse(segs[1].Trim(), out uint end))
                     {
-                        for (int i = Math.Max(1, start); i <= Math.Min(totalPages, end); i++)
+                        for (uint i = Math.Max(1, start); i <= Math.Min((uint)maxPages, end); i++)
                         {
-                            int zeroIdx = i - 1;
-                            if (!result.Contains(zeroIdx)) result.Add(zeroIdx);
+                            pageSet.Add(i - 1);
                         }
                     }
                 }
-                else if (int.TryParse(s, out int single))
+                else if (uint.TryParse(p, out uint singlePage))
                 {
-                    if (single >= 1 && single <= totalPages)
+                    if (singlePage >= 1 && singlePage <= maxPages)
                     {
-                        int zeroIdx = single - 1;
-                        if (!result.Contains(zeroIdx)) result.Add(zeroIdx);
+                        pageSet.Add(singlePage - 1);
                     }
                 }
             }
-            return result.Count > 0 ? result : new List<int> { 0 };
+
+            result.AddRange(pageSet);
+            result.Sort();
+            if (result.Count == 0)
+            {
+                for (uint i = 0; i < maxPages; i++) result.Add(i);
+            }
+            return result;
         }
     }
 }
