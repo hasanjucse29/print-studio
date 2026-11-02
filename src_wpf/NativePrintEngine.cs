@@ -33,129 +33,139 @@ namespace PrintStudio.Services
             Action<int, int, string> onProgress,
             CancellationToken ct)
         {
-            await Task.Run(async () =>
+            // Ensure execution runs on the UI STA thread for WPF Visuals and PrintQueue affinity
+            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
             {
-                using var server = new LocalPrintServer();
-                PrintQueue queue;
-                try
+                await Application.Current.Dispatcher.InvokeAsync(async () =>
                 {
-                    queue = server.GetPrintQueue(options.PrinterName);
-                }
-                catch
-                {
-                    queue = server.DefaultPrintQueue;
-                }
+                    await PrintBatchAsync(items, options, onProgress, ct);
+                });
+                return;
+            }
 
-                // Safely obtain base PrintTicket without crashing on buggy printer drivers
-                PrintTicket? baseTicket = null;
+            using var server = new LocalPrintServer();
+            PrintQueue queue;
+            try
+            {
+                queue = server.GetPrintQueue(options.PrinterName);
+            }
+            catch
+            {
+                queue = server.DefaultPrintQueue;
+            }
+
+            // Safely obtain base PrintTicket without crashing on buggy printer drivers
+            PrintTicket? baseTicket = null;
+            try
+            {
+                baseTicket = queue.UserPrintTicket?.Clone() ?? queue.DefaultPrintTicket?.Clone();
+            }
+            catch
+            {
+                // Fall back to clean in-memory ticket if driver fails DEVMODE-to-PrintTicket conversion
                 try
                 {
-                    baseTicket = queue.UserPrintTicket?.Clone() ?? queue.DefaultPrintTicket?.Clone();
+                    baseTicket = new PrintTicket();
                 }
                 catch
                 {
-                    // Fall back to clean in-memory ticket if driver fails DEVMODE-to-PrintTicket conversion
+                    baseTicket = null;
+                }
+            }
+
+            // Process each document
+            for (int itemIdx = 0; itemIdx < items.Count; itemIdx++)
+            {
+                if (ct.IsCancellationRequested) break;
+                var item = items[itemIdx];
+                onProgress(itemIdx + 1, items.Count, item.FileName);
+
+                // Granular per-file overrides
+                string effectiveColor = item.UseCustomSettings && item.CustomColor != "default"
+                    ? item.CustomColor
+                    : options.ColorMode;
+
+                string effectiveOrient = item.UseCustomSettings && item.CustomOrientation != "default"
+                    ? item.CustomOrientation
+                    : options.Orientation;
+
+                int effectiveCopies = item.UseCustomSettings ? item.Copies : options.Copies;
+                int nup = options.Nup;
+
+                var pagesToPrint = ParsePageRange(item.PageRange, item.PageCount);
+
+                bool docLandscape = effectiveOrient == "landscape" || (effectiveOrient == "auto" && item.DetectedOrientation == "landscape");
+                if (nup == 2) docLandscape = !docLandscape; // 2-up flips best
+                else if (nup == 6) docLandscape = true;
+
+                // Configure doc ticket safely
+                PrintTicket? docTicket = null;
+                if (baseTicket != null)
+                {
                     try
                     {
-                        baseTicket = new PrintTicket();
+                        docTicket = baseTicket.Clone();
+                        try { docTicket.OutputColor = effectiveColor == "color" ? OutputColor.Color : OutputColor.Monochrome; } catch { }
+                        try { docTicket.CopyCount = Math.Max(1, effectiveCopies); } catch { }
+                        try { docTicket.PageOrientation = docLandscape ? PageOrientation.Landscape : PageOrientation.Portrait; } catch { }
+
+                        // Duplex
+                        try
+                        {
+                            if (options.Duplex == "vertical") docTicket.Duplexing = Duplexing.TwoSidedLongEdge;
+                            else if (options.Duplex == "horizontal") docTicket.Duplexing = Duplexing.TwoSidedShortEdge;
+                            else docTicket.Duplexing = Duplexing.OneSided;
+                        }
+                        catch { }
+
+                        // Paper size
+                        try
+                        {
+                            if (options.PaperSize == "Letter") docTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLetter);
+                            else if (options.PaperSize == "Legal") docTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLegal);
+                            else docTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
+                        }
+                        catch { }
                     }
                     catch
                     {
-                        baseTicket = null;
+                        docTicket = null;
                     }
                 }
 
-                // Process each document
-                for (int itemIdx = 0; itemIdx < items.Count; itemIdx++)
+                // Standard sheet dimensions in 96 DPI units
+                double sheetW = docLandscape ? 1122 : 793;
+                double sheetH = docLandscape ? 793 : 1122;
+
+                for (int i = 0; i < pagesToPrint.Count; i += nup)
                 {
                     if (ct.IsCancellationRequested) break;
-                    var item = items[itemIdx];
-                    onProgress(itemIdx + 1, items.Count, item.FileName);
+                    int take = Math.Min(nup, pagesToPrint.Count - i);
+                    var chunkIndices = pagesToPrint.GetRange(i, take);
 
-                    // Granular per-file overrides
-                    string effectiveColor = item.UseCustomSettings && item.CustomColor != "default"
-                        ? item.CustomColor
-                        : options.ColorMode;
-
-                    string effectiveOrient = item.UseCustomSettings && item.CustomOrientation != "default"
-                        ? item.CustomOrientation
-                        : options.Orientation;
-
-                    int effectiveCopies = item.UseCustomSettings ? item.Copies : options.Copies;
-                    int nup = options.Nup;
-
-                    var pagesToPrint = ParsePageRange(item.PageRange, item.PageCount);
-
-                    bool docLandscape = effectiveOrient == "landscape" || (effectiveOrient == "auto" && item.DetectedOrientation == "landscape");
-                    if (nup == 2) docLandscape = !docLandscape; // 2-up flips best
-                    else if (nup == 6) docLandscape = true;
-
-                    // Configure doc ticket safely
-                    PrintTicket? docTicket = null;
-                    if (baseTicket != null)
+                    var renderedImages = new List<BitmapSource>();
+                    foreach (uint pageIdx in chunkIndices)
                     {
-                        try
-                        {
-                            docTicket = baseTicket.Clone();
-                            try { docTicket.OutputColor = effectiveColor == "color" ? OutputColor.Color : OutputColor.Monochrome; } catch { }
-                            try { docTicket.CopyCount = Math.Max(1, effectiveCopies); } catch { }
-                            try { docTicket.PageOrientation = docLandscape ? PageOrientation.Landscape : PageOrientation.Portrait; } catch { }
-
-                            // Duplex
-                            try
-                            {
-                                if (options.Duplex == "vertical") docTicket.Duplexing = Duplexing.TwoSidedLongEdge;
-                                else if (options.Duplex == "horizontal") docTicket.Duplexing = Duplexing.TwoSidedShortEdge;
-                                else docTicket.Duplexing = Duplexing.OneSided;
-                            }
-                            catch { }
-
-                            // Paper size
-                            try
-                            {
-                                if (options.PaperSize == "Letter") docTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLetter);
-                                else if (options.PaperSize == "Legal") docTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLegal);
-                                else docTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
-                            }
-                            catch { }
-                        }
-                        catch
-                        {
-                            docTicket = null;
-                        }
+                        byte[] pngBytes = await WindowsPdfRenderer.RenderPageToPngBytesAsync(item.FilePath, pageIdx, 1200, 1600);
+                        using var ms = new MemoryStream(pngBytes);
+                        var bmp = new BitmapImage();
+                        bmp.BeginInit();
+                        bmp.CacheOption = BitmapCacheOption.OnLoad;
+                        bmp.StreamSource = ms;
+                        bmp.EndInit();
+                        bmp.Freeze();
+                        renderedImages.Add(bmp);
                     }
 
-                    // Standard sheet dimensions in 96 DPI units
-                    double sheetW = docLandscape ? 1122 : 793;
-                    double sheetH = docLandscape ? 793 : 1122;
+                    var visual = ComposeSheetVisual(renderedImages, sheetW, sheetH, nup, options.DrawBorders, effectiveColor == "bw");
 
-                    for (int i = 0; i < pagesToPrint.Count; i += nup)
-                    {
-                        if (ct.IsCancellationRequested) break;
-                        int take = Math.Min(nup, pagesToPrint.Count - i);
-                        var chunkIndices = pagesToPrint.GetRange(i, take);
+                    // Print sheet on this STA thread with multi-layer fallback
+                    PrintSheetSafe(queue, visual, docTicket, $"Print Studio - {item.FileName} (Sheet {i / nup + 1})");
 
-                        var renderedImages = new List<BitmapSource>();
-                        foreach (uint pageIdx in chunkIndices)
-                        {
-                            byte[] pngBytes = await WindowsPdfRenderer.RenderPageToPngBytesAsync(item.FilePath, pageIdx, 1200, 1600);
-                            using var ms = new MemoryStream(pngBytes);
-                            var bmp = new BitmapImage();
-                            bmp.BeginInit();
-                            bmp.CacheOption = BitmapCacheOption.OnLoad;
-                            bmp.StreamSource = ms;
-                            bmp.EndInit();
-                            bmp.Freeze();
-                            renderedImages.Add(bmp);
-                        }
-
-                        var visual = ComposeSheetVisual(renderedImages, sheetW, sheetH, nup, options.DrawBorders, effectiveColor == "bw");
-
-                        // Print sheet with multi-layer fallback
-                        PrintSheetSafe(queue, visual, docTicket, $"Print Studio - {item.FileName} (Sheet {i / nup + 1})");
-                    }
+                    // Yield briefly to keep UI responsive
+                    await Task.Delay(5, ct);
                 }
-            }, ct);
+            }
         }
 
         private static void PrintSheetSafe(PrintQueue queue, Visual visual, PrintTicket? docTicket, string description)
