@@ -68,7 +68,7 @@ end;
 
 procedure InitializeWizard;
 begin
-  DownloadPage := CreateDownloadPage(SetupMessage(msgWizardPreparing), 'প্রয়োজনীয় কম্পোনেন্ট ডাউনলোড করা হচ্ছে...', nil);
+  DownloadPage := CreateDownloadPage('প্রয়োজনীয় সিস্টেম ফাইল ডাউনলোড', 'প্রয়োজনীয় কম্পোনেন্ট স্বয়ংক্রিয়ভাবে ডাউনলোড ও কনফিগার করা হচ্ছে...', nil);
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -78,50 +78,38 @@ begin
   Result := True;
   if CurPageID = wpReady then
   begin
+    // If .NET 8 Desktop Runtime is not found, download and install silently with zero prompts
     if not IsDotNet8DesktopInstalled() then
     begin
-      if MsgBox('প্রিন্ট স্টুডিও চালানোর জন্য এই কম্পিউটারে মাইক্রোসফট .NET 8 Desktop Runtime প্রয়োজন।' + #13#10#13#10 +
-                'ইনস্টলার কি এটি সরাসরি মাইক্রোসফট থেকে ডাউনলোড ও ইনস্টল করবে?', mbConfirmation, MB_YESNO) = IDYES then
-      begin
-        DownloadPage.Clear;
-        DownloadPage.Add('https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe', 'dotnet8_desktop_runtime.exe', '');
-        DownloadPage.Show;
+      DownloadPage.Clear;
+      DownloadPage.Add('https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe', 'dotnet8_desktop_runtime.exe', '');
+      DownloadPage.Show;
+      try
         try
-          try
-            DownloadPage.Download;
-            Result := True;
-          except
-            if DownloadPage.AbortedByUser then
-              Log('User aborted download')
-            else
-              SuppressibleMsgBox(AddPeriod(GetExceptionMessage), mbCriticalError, MB_OK, IDOK);
-            Result := False;
-          end;
-        finally
-          DownloadPage.Hide;
-        end;
-
-        if Result then
-        begin
-          if Exec(ExpandConstant('{tmp}\dotnet8_desktop_runtime.exe'), '/install /quiet /norestart', '', SW_SHOW, ewWaitUntilTerminated, ErrorCode) then
-          begin
-            Result := (ErrorCode = 0) or (ErrorCode = 3010);
-            if not Result then
-            begin
-              MsgBox('.NET 8 ইনস্টলেশনে ত্রুটি হয়েছে (Exit code: ' + IntToStr(ErrorCode) + ')।', mbError, MB_OK);
-            end;
-          end
+          DownloadPage.Download;
+          Result := True;
+        except
+          if DownloadPage.AbortedByUser then
+            Log('User aborted download')
           else
-          begin
-            MsgBox('.NET 8 ইনস্টলার রান করা যায়নি।', mbError, MB_OK);
-            Result := False;
-          end;
+            SuppressibleMsgBox('ইন্টারনেট সংযোগ পরীক্ষা করুন। প্রয়োজনীয় ফাইল ডাউনলোড করা যায়নি।', mbCriticalError, MB_OK, IDOK);
+          Result := False;
         end;
-      end
-      else
+      finally
+        DownloadPage.Hide;
+      end;
+
+      if Result then
       begin
-        MsgBox('.NET 8 ছাড়া প্রিন্ট স্টুডিও রান হতে পারবে না।' + #13#10 + 'আপনি চাইলে পরবর্তীতে মাইক্রোসফটের ওয়েবসাইট থেকে .NET 8 Desktop Runtime ইনস্টল করে নিতে পারবেন।', mbInformation, MB_OK);
-        Result := False;
+        // Silently install in background with no windows or popups
+        if Exec(ExpandConstant('{tmp}\dotnet8_desktop_runtime.exe'), '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode) then
+        begin
+          Result := (ErrorCode = 0) or (ErrorCode = 3010);
+        end
+        else
+        begin
+          Result := False;
+        end;
       end;
     end;
   end;
