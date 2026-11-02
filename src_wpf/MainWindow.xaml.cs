@@ -19,10 +19,12 @@ namespace PrintStudio
         public ObservableCollection<PrintItem> Queue { get; } = new();
         private PrinterDeviceInfo? _selectedPrinter;
         private int _selectedNup = 1;
+        private bool _isInitialized = false;
 
         public MainWindow()
         {
             InitializeComponent();
+            _isInitialized = true;
             FileList.ItemsSource = Queue;
             Loaded += MainWindow_Loaded;
         }
@@ -84,7 +86,10 @@ namespace PrintStudio
 
         private void SettingChanged(object sender, SelectionChangedEventArgs e)
         {
-            UpdateSummary();
+            if (_isInitialized)
+            {
+                UpdateSummary();
+            }
         }
 
         private void Nup_Click(object sender, RoutedEventArgs e)
@@ -96,7 +101,7 @@ namespace PrintStudio
                 btn.Background = new SolidColorBrush(Color.FromRgb(239, 246, 255));
                 btn.Foreground = new SolidColorBrush(Color.FromRgb(37, 99, 235));
                 btn.BorderBrush = new SolidColorBrush(Color.FromRgb(37, 99, 235));
-                UpdateSummary();
+                if (_isInitialized) UpdateSummary();
             }
         }
 
@@ -117,7 +122,7 @@ namespace PrintStudio
             if (int.TryParse(CopiesText.Text, out int c))
             {
                 CopiesText.Text = Math.Max(1, c - 1).ToString();
-                UpdateSummary();
+                if (_isInitialized) UpdateSummary();
             }
         }
 
@@ -126,27 +131,32 @@ namespace PrintStudio
             if (int.TryParse(CopiesText.Text, out int c))
             {
                 CopiesText.Text = Math.Min(99, c + 1).ToString();
-                UpdateSummary();
+                if (_isInitialized) UpdateSummary();
             }
         }
 
         private void UpdateSummary()
         {
-            if (_selectedPrinter != null)
+            if (!_isInitialized) return;
+
+            if (_selectedPrinter != null && SummaryPrinterName != null && SummaryStatusTag != null)
             {
                 SummaryPrinterName.Text = _selectedPrinter.Name;
                 SummaryStatusTag.Text = _selectedPrinter.StatusLabel;
             }
 
-            string color = (ColorCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() == "color" ? "কালার" : "B&W";
-            string paper = (PaperCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "A4";
-            int dpi = (QualityCombo.SelectedItem as QualityOption)?.Dpi ?? 600;
-            SummarySpecs.Text = $"{color} • {paper} • {dpi} DPI";
+            string color = (ColorCombo?.SelectedItem as ComboBoxItem)?.Tag?.ToString() == "color" ? "কালার" : "B&W";
+            string paper = (PaperCombo?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "A4";
+            int dpi = (QualityCombo?.SelectedItem as QualityOption)?.Dpi ?? 600;
+            if (SummarySpecs != null)
+            {
+                SummarySpecs.Text = $"{color} • {paper} • {dpi} DPI";
+            }
 
             // Calculate sheet estimate
             int totalSheets = 0;
             int nup = _selectedNup;
-            int copies = int.TryParse(CopiesText.Text, out int cp) ? cp : 1;
+            int copies = (CopiesText != null && int.TryParse(CopiesText.Text, out int cp)) ? cp : 1;
 
             foreach (var item in Queue)
             {
@@ -155,12 +165,21 @@ namespace PrintStudio
                 totalSheets += sheets;
             }
 
-            string duplex = (DuplexCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "simplex";
+            string duplex = (DuplexCombo?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "simplex";
             int physicalSheets = duplex == "simplex" ? totalSheets : (int)Math.Ceiling((double)totalSheets / 2);
-            SummarySheets.Text = $"{physicalSheets} টি কাগজ{(duplex != "simplex" ? " (ডুপ্লেক্স)" : "")}";
+            if (SummarySheets != null)
+            {
+                SummarySheets.Text = $"{physicalSheets} টি কাগজ{(duplex != "simplex" ? " (ডুপ্লেক্স)" : "")}";
+            }
 
-            QueueStatsText.Text = $"প্রিন্ট কিউ ({Queue.Count}টি ফাইল • মোট {Queue.Sum(q => q.PageCount)} পেজ)";
-            BtnPrintAll.IsEnabled = Queue.Count > 0;
+            if (QueueStatsText != null)
+            {
+                QueueStatsText.Text = $"প্রিন্ট কিউ ({Queue.Count}টি ফাইল • মোট {Queue.Sum(q => q.PageCount)} পেজ)";
+            }
+            if (BtnPrintAll != null)
+            {
+                BtnPrintAll.IsEnabled = Queue.Count > 0;
+            }
         }
 
         private async void DropZone_Drop(object sender, DragEventArgs e)
