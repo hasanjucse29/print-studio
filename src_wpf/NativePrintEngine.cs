@@ -1,13 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Printing;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Xps;
 using PrintStudio.Models;
 
 namespace PrintStudio.Services
@@ -25,62 +24,164 @@ namespace PrintStudio.Services
         public string Orientation { get; set; } = "auto"; // auto, portrait, landscape
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct DOCINFO
+    {
+        public int cbSize;
+        [MarshalAs(UnmanagedType.LPTStr)] public string lpszDocName;
+        [MarshalAs(UnmanagedType.LPTStr)] public string? lpszOutput;
+        [MarshalAs(UnmanagedType.LPTStr)] public string? lpszDatatype;
+        public int fwType;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BITMAPINFOHEADER
+    {
+        public uint biSize;
+        public int biWidth;
+        public int biHeight;
+        public ushort biPlanes;
+        public ushort biBitCount;
+        public uint biCompression;
+        public uint biSizeImage;
+        public int biXPelsPerMeter;
+        public int biYPelsPerMeter;
+        public uint biClrUsed;
+        public uint biClrImportant;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BITMAPINFO
+    {
+        public BITMAPINFOHEADER bmiHeader;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct DEVMODE
+    {
+        private const int CCHDEVICENAME = 32;
+        private const int CCHFORMNAME = 32;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = CCHDEVICENAME)]
+        public string dmDeviceName;
+        public short dmSpecVersion;
+        public short dmDriverVersion;
+        public short dmSize;
+        public short dmDriverExtra;
+        public int dmFields;
+
+        public short dmOrientation;
+        public short dmPaperSize;
+        public short dmPaperLength;
+        public short dmPaperWidth;
+        public short dmScale;
+        public short dmCopies;
+        public short dmDefaultSource;
+        public short dmPrintQuality;
+        public short dmColor;
+        public short dmDuplex;
+        public short dmYResolution;
+        public short dmTTOption;
+        public short dmCollate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = CCHFORMNAME)]
+        public string dmFormName;
+        public short dmLogPixels;
+        public short dmBitsPerPel;
+        public int dmPelsWidth;
+        public int dmPelsHeight;
+        public int dmNup;
+        public int dmDisplayFrequency;
+        public int dmICMMethod;
+        public int dmICMIntent;
+        public int dmMediaType;
+        public int dmDitherType;
+        public int dmReserved1;
+        public int dmReserved2;
+        public int dmPanningWidth;
+        public int dmPanningHeight;
+    }
+
     public static class NativePrintEngine
     {
+        // GDI Win32 API
+        [DllImport("gdi32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr CreateDC(string lpszDriver, string lpszDevice, string? lpszOutput, IntPtr lpInitData);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        private static extern bool DeleteDC(IntPtr hdc);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        private static extern int StartDoc(IntPtr hdc, ref DOCINFO lpdi);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        private static extern int EndDoc(IntPtr hdc);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        private static extern int StartPage(IntPtr hdc);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        private static extern int EndPage(IntPtr hdc);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        private static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        private static extern int SetStretchBltMode(IntPtr hdc, int mode);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        private static extern int StretchDIBits(
+            IntPtr hdc,
+            int XDest, int YDest, int nDestWidth, int nDestHeight,
+            int XSrc, int YSrc, int nSrcWidth, int nSrcHeight,
+            byte[] lpBits,
+            ref BITMAPINFO lpBitsInfo,
+            uint iUsage,
+            uint dwRop);
+
+        // WinSpool Win32 API
+        [DllImport("winspool.drv", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern int OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
+
+        [DllImport("winspool.drv", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern int ClosePrinter(IntPtr hPrinter);
+
+        [DllImport("winspool.drv", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern int DocumentProperties(IntPtr hWnd, IntPtr hPrinter, string pDeviceName, IntPtr pDevModeOutput, IntPtr pDevModeInput, int fMode);
+
+        private const int HORZRES = 8;
+        private const int VERTRES = 10;
+        private const int HALFTONE = 4;
+        private const uint DIB_RGB_COLORS = 0;
+        private const uint SRCCOPY = 0x00CC0020;
+
+        private const int DM_ORIENTATION = 0x00000001;
+        private const int DM_PAPERSIZE = 0x00000002;
+        private const int DM_COPIES = 0x00000100;
+        private const int DM_COLOR = 0x00000800;
+        private const int DM_DUPLEX = 0x00001000;
+        private const int DM_PRINTQUALITY = 0x00000400;
+        private const int DM_YRESOLUTION = 0x00002000;
+
         public static async Task PrintBatchAsync(
             List<PrintItem> items,
             PrintEngineOptions options,
             Action<int, int, string> onProgress,
             CancellationToken ct)
         {
-            // Ensure execution runs on the UI STA thread for WPF Visuals and PrintQueue affinity
-            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
+            if (string.IsNullOrWhiteSpace(options.PrinterName))
             {
-                await Application.Current.Dispatcher.InvokeAsync(async () =>
-                {
-                    await PrintBatchAsync(items, options, onProgress, ct);
-                });
-                return;
+                throw new InvalidOperationException("কোনো প্রিন্টার নির্বাচিত করা হয়নি।");
             }
 
-            using var server = new LocalPrintServer();
-            PrintQueue queue;
-            try
-            {
-                queue = server.GetPrintQueue(options.PrinterName);
-            }
-            catch
-            {
-                queue = server.DefaultPrintQueue;
-            }
+            bool isVirtual = options.PrinterName.IndexOf("PDF", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             options.PrinterName.IndexOf("XPS", StringComparison.OrdinalIgnoreCase) >= 0;
 
-            // Safely obtain base PrintTicket without crashing on buggy printer drivers
-            PrintTicket? baseTicket = null;
-            try
-            {
-                baseTicket = queue.UserPrintTicket?.Clone() ?? queue.DefaultPrintTicket?.Clone();
-            }
-            catch
-            {
-                // Fall back to clean in-memory ticket if driver fails DEVMODE-to-PrintTicket conversion
-                try
-                {
-                    baseTicket = new PrintTicket();
-                }
-                catch
-                {
-                    baseTicket = null;
-                }
-            }
-
-            // Process each document
             for (int itemIdx = 0; itemIdx < items.Count; itemIdx++)
             {
                 if (ct.IsCancellationRequested) break;
                 var item = items[itemIdx];
                 onProgress(itemIdx + 1, items.Count, item.FileName);
 
-                // Granular per-file overrides
                 string effectiveColor = item.UseCustomSettings && item.CustomColor != "default"
                     ? item.CustomColor
                     : options.ColorMode;
@@ -93,120 +194,183 @@ namespace PrintStudio.Services
                 int nup = options.Nup;
 
                 var pagesToPrint = ParsePageRange(item.PageRange, item.PageCount);
+                if (pagesToPrint.Count == 0) continue;
 
                 bool docLandscape = effectiveOrient == "landscape" || (effectiveOrient == "auto" && item.DetectedOrientation == "landscape");
                 if (nup == 2) docLandscape = !docLandscape; // 2-up flips best
                 else if (nup == 6) docLandscape = true;
 
-                // Configure doc ticket safely
-                PrintTicket? docTicket = null;
-                if (baseTicket != null)
+                // Prepare DEVMODE for this document
+                IntPtr pDevMode = IntPtr.Zero;
+                IntPtr hPrinter;
+                if (OpenPrinter(options.PrinterName, out hPrinter, IntPtr.Zero) != 0)
                 {
                     try
                     {
-                        docTicket = baseTicket.Clone();
-                        try { docTicket.OutputColor = effectiveColor == "color" ? OutputColor.Color : OutputColor.Monochrome; } catch { }
-                        try { docTicket.CopyCount = Math.Max(1, effectiveCopies); } catch { }
-                        try { docTicket.PageOrientation = docLandscape ? PageOrientation.Landscape : PageOrientation.Portrait; } catch { }
-
-                        // Duplex
-                        try
+                        int size = DocumentProperties(IntPtr.Zero, hPrinter, options.PrinterName, IntPtr.Zero, IntPtr.Zero, 0);
+                        if (size > 0)
                         {
-                            if (options.Duplex == "vertical") docTicket.Duplexing = Duplexing.TwoSidedLongEdge;
-                            else if (options.Duplex == "horizontal") docTicket.Duplexing = Duplexing.TwoSidedShortEdge;
-                            else docTicket.Duplexing = Duplexing.OneSided;
-                        }
-                        catch { }
+                            pDevMode = Marshal.AllocHGlobal(size);
+                            if (DocumentProperties(IntPtr.Zero, hPrinter, options.PrinterName, pDevMode, IntPtr.Zero, 2) == 1) // 2 = DM_OUT_BUFFER
+                            {
+                                var devMode = Marshal.PtrToStructure<DEVMODE>(pDevMode);
 
-                        // Paper size
-                        try
-                        {
-                            if (options.PaperSize == "Letter") docTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLetter);
-                            else if (options.PaperSize == "Legal") docTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.NorthAmericaLegal);
-                            else docTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
+                                devMode.dmOrientation = (short)(docLandscape ? 2 : 1);
+                                devMode.dmFields |= DM_ORIENTATION;
+
+                                if (effectiveCopies > 1)
+                                {
+                                    devMode.dmCopies = (short)effectiveCopies;
+                                    devMode.dmFields |= DM_COPIES;
+                                }
+
+                                if (options.Duplex == "vertical")
+                                {
+                                    devMode.dmDuplex = 2; // DMDUP_VERTICAL
+                                    devMode.dmFields |= DM_DUPLEX;
+                                }
+                                else if (options.Duplex == "horizontal")
+                                {
+                                    devMode.dmDuplex = 3; // DMDUP_HORIZONTAL
+                                    devMode.dmFields |= DM_DUPLEX;
+                                }
+                                else
+                                {
+                                    devMode.dmDuplex = 1; // DMDUP_SIMPLEX
+                                    devMode.dmFields |= DM_DUPLEX;
+                                }
+
+                                if (options.PaperSize == "Letter") devMode.dmPaperSize = 1;
+                                else if (options.PaperSize == "Legal") devMode.dmPaperSize = 5;
+                                else devMode.dmPaperSize = 9; // A4
+                                devMode.dmFields |= DM_PAPERSIZE;
+
+                                devMode.dmColor = (short)(effectiveColor == "color" ? 2 : 1);
+                                devMode.dmFields |= DM_COLOR;
+
+                                if (options.Dpi > 0)
+                                {
+                                    devMode.dmPrintQuality = (short)options.Dpi;
+                                    devMode.dmYResolution = (short)options.Dpi;
+                                    devMode.dmFields |= DM_PRINTQUALITY | DM_YRESOLUTION;
+                                }
+
+                                Marshal.StructureToPtr(devMode, pDevMode, false);
+                            }
                         }
-                        catch { }
                     }
-                    catch
+                    catch { }
+                    finally
                     {
-                        docTicket = null;
+                        ClosePrinter(hPrinter);
                     }
                 }
 
-                // Standard sheet dimensions in 96 DPI units
-                double sheetW = docLandscape ? 1122 : 793;
-                double sheetH = docLandscape ? 793 : 1122;
-
-                for (int i = 0; i < pagesToPrint.Count; i += nup)
+                // Create native GDI Printer DC
+                IntPtr hdc = CreateDC("WINSPOOL", options.PrinterName, null, pDevMode);
+                if (pDevMode != IntPtr.Zero)
                 {
-                    if (ct.IsCancellationRequested) break;
-                    int take = Math.Min(nup, pagesToPrint.Count - i);
-                    var chunkIndices = pagesToPrint.GetRange(i, take);
-
-                    var renderedImages = new List<BitmapSource>();
-                    foreach (uint pageIdx in chunkIndices)
-                    {
-                        byte[] pngBytes = await WindowsPdfRenderer.RenderPageToPngBytesAsync(item.FilePath, pageIdx, 1200, 1600);
-                        using var ms = new MemoryStream(pngBytes);
-                        var bmp = new BitmapImage();
-                        bmp.BeginInit();
-                        bmp.CacheOption = BitmapCacheOption.OnLoad;
-                        bmp.StreamSource = ms;
-                        bmp.EndInit();
-                        bmp.Freeze();
-                        renderedImages.Add(bmp);
-                    }
-
-                    var visual = ComposeSheetVisual(renderedImages, sheetW, sheetH, nup, options.DrawBorders, effectiveColor == "bw");
-
-                    // Print sheet on this STA thread with multi-layer fallback
-                    PrintSheetSafe(queue, visual, docTicket, $"Print Studio - {item.FileName} (Sheet {i / nup + 1})");
-
-                    // Yield briefly to keep UI responsive
-                    await Task.Delay(5, ct);
+                    Marshal.FreeHGlobal(pDevMode);
                 }
-            }
-        }
 
-        private static void PrintSheetSafe(PrintQueue queue, Visual visual, PrintTicket? docTicket, string description)
-        {
-            // Layer 1: XpsDocumentWriter with customized PrintTicket
-            if (docTicket != null)
-            {
+                if (hdc == IntPtr.Zero)
+                {
+                    int win32Err = Marshal.GetLastWin32Error();
+                    throw new InvalidOperationException($"প্রিন্টারের সাথে সংযোগ স্থাপন করা যায়নি ({options.PrinterName})। Win32 Error: {win32Err}");
+                }
+
                 try
                 {
-                    var xpsWriter = PrintQueue.CreateXpsDocumentWriter(queue);
-                    xpsWriter.Write(visual, docTicket);
-                    return;
+                    int dcW = GetDeviceCaps(hdc, HORZRES);
+                    int dcH = GetDeviceCaps(hdc, VERTRES);
+                    if (dcW <= 0 || dcH <= 0)
+                    {
+                        dcW = docLandscape ? 3508 : 2480;
+                        dcH = docLandscape ? 2480 : 3508;
+                    }
+
+                    var di = new DOCINFO();
+                    di.cbSize = Marshal.SizeOf(typeof(DOCINFO));
+                    di.lpszDocName = $"Print Studio - {item.FileName}";
+
+                    if (isVirtual)
+                    {
+                        string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                        string outDir = Path.Combine(desktop, "Print_Studio_Output");
+                        Directory.CreateDirectory(outDir);
+                        string cleanName = Path.GetFileNameWithoutExtension(item.FileName);
+                        di.lpszOutput = Path.Combine(outDir, $"{cleanName}_printed_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
+                    }
+
+                    int startDocRes = StartDoc(hdc, ref di);
+                    if (startDocRes <= 0)
+                    {
+                        int err = Marshal.GetLastWin32Error();
+                        throw new InvalidOperationException($"প্রিন্ট জব শুরু করা যায়নি (StartDoc Error: {err})");
+                    }
+
+                    SetStretchBltMode(hdc, HALFTONE);
+
+                    // Sheet canvas size in pixels (high quality 300 DPI canvas)
+                    double compW = docLandscape ? 3508 : 2480;
+                    double compH = docLandscape ? 2480 : 3508;
+
+                    for (int i = 0; i < pagesToPrint.Count; i += nup)
+                    {
+                        if (ct.IsCancellationRequested) break;
+                        int take = Math.Min(nup, pagesToPrint.Count - i);
+                        var chunkIndices = pagesToPrint.GetRange(i, take);
+
+                        var renderedImages = new List<BitmapSource>();
+                        foreach (uint pageIdx in chunkIndices)
+                        {
+                            byte[] pngBytes = await WindowsPdfRenderer.RenderPageToPngBytesAsync(item.FilePath, pageIdx, 1800, 2400);
+                            using var ms = new MemoryStream(pngBytes);
+                            var bmp = new BitmapImage();
+                            bmp.BeginInit();
+                            bmp.CacheOption = BitmapCacheOption.OnLoad;
+                            bmp.StreamSource = ms;
+                            bmp.EndInit();
+                            bmp.Freeze();
+                            renderedImages.Add(bmp);
+                        }
+
+                        // Compose visual sheet
+                        var visual = ComposeSheetVisual(renderedImages, compW, compH, nup, options.DrawBorders, effectiveColor == "bw");
+
+                        // Render visual to RenderTargetBitmap
+                        var rtb = new RenderTargetBitmap((int)compW, (int)compH, 96, 96, PixelFormats.Pbgra32);
+                        rtb.Render(visual);
+                        rtb.Freeze();
+
+                        int bmpW = rtb.PixelWidth;
+                        int bmpH = rtb.PixelHeight;
+                        int stride = bmpW * 4;
+                        byte[] pixels = new byte[stride * bmpH];
+                        rtb.CopyPixels(pixels, stride, 0);
+
+                        var bmi = new BITMAPINFO();
+                        bmi.bmiHeader.biSize = (uint)Marshal.SizeOf(typeof(BITMAPINFOHEADER));
+                        bmi.bmiHeader.biWidth = bmpW;
+                        bmi.bmiHeader.biHeight = -bmpH; // Top-down DIB
+                        bmi.bmiHeader.biPlanes = 1;
+                        bmi.bmiHeader.biBitCount = 32;
+                        bmi.bmiHeader.biCompression = 0; // BI_RGB
+                        bmi.bmiHeader.biSizeImage = (uint)pixels.Length;
+
+                        StartPage(hdc);
+                        StretchDIBits(hdc, 0, 0, dcW, dcH, 0, 0, bmpW, bmpH, pixels, ref bmi, DIB_RGB_COLORS, SRCCOPY);
+                        EndPage(hdc);
+
+                        await Task.Delay(1, ct);
+                    }
+
+                    EndDoc(hdc);
                 }
-                catch
+                finally
                 {
-                    // Fall through to Layer 2 if driver failed DEVMODE conversion
+                    DeleteDC(hdc);
                 }
-            }
-
-            // Layer 2: XpsDocumentWriter with driver native default (bypasses XML PrintTicket conversion)
-            try
-            {
-                var xpsWriter = PrintQueue.CreateXpsDocumentWriter(queue);
-                xpsWriter.Write(visual);
-                return;
-            }
-            catch
-            {
-                // Fall through to Layer 3
-            }
-
-            // Layer 3: PrintDialog.PrintVisual fallback
-            try
-            {
-                var printDialog = new System.Windows.Controls.PrintDialog();
-                printDialog.PrintQueue = queue;
-                printDialog.PrintVisual(visual, description);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"প্রিন্টারে ডেটা পাঠানো যায়নি ({queue.Name}): {ex.Message}", ex);
             }
         }
 
@@ -281,7 +445,7 @@ namespace PrintStudio.Services
                 double availW = cellW - (padX * 2);
                 double availH = cellH - (padY * 2);
 
-                var borderPen = new Pen(new SolidColorBrush(Color.FromRgb(203, 213, 225)), 1.0);
+                var borderPen = new Pen(new SolidColorBrush(Color.FromRgb(203, 213, 225)), Math.Max(1.5, width / 800.0));
                 borderPen.Freeze();
 
                 for (int i = 0; i < images.Count; i++)
